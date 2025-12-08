@@ -1,0 +1,205 @@
+/*
+ * AhsList.css
+ * Menggabungkan gaya untuk AhsList (tabel utama) dan AhsDetail (tabel detail)
+ */
+
+/* =========================================== */
+/* ## 1. KONTAINER UTAMA & RESPONSIVE LIST */
+/* =========================================== */
+.ahs-list-container {
+    width: 100%;
+}
+
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: auto;
+    /* Max height untuk scroll vertikal pada body tabel */
+    max-height: 68vh; 
+}
+
+/* =========================================== */
+/* ## 2. GAYA TABEL UTAMA (AHS-LIST) */
+/* =========================================== */
+
+/* Gaya dasar tabel utama */
+.ahs-table {
+    width: 100%;
+    border-collapse: separate; 
+    border-spacing: 0;
+    min-width: 1000px; /* Memastikan tabel tidak terlalu kecil saat di-scroll horizontal */
+    margin-bottom: 30px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+/* Header Sticky Ungu */
+.ahs-table thead th {
+    position: sticky;
+    top: 0;
+    background-color: #2d1666; /* Biru Tua / Ungu Gelap */
+    color: white;
+    z-index: 10;
+    padding: 14px 12px;
+    text-align: left;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    border-right: 1px solid rgba(255,255,255,0.1);
+}
+
+/* Kolom aksi di header (Sticky Kanan) */
+.ahs-table thead th.sticky-action {
+    position: sticky;
+    right: 0; 
+    z-index: 11;
+    border-left: 1px solid rgba(255,255,255,0.1);
+}
+
+/* Baris Data */
+.ahs-table tbody tr.ahs-row td {
+    padding: 12px;
+    border-bottom: 1px solid #eee;
+    font-size: 13px;
+    color: #333;
+    vertical-align: middle;
+    background-color: white;
+    white-space: nowrap;
+}
+
+.ahs-table tbody tr.ahs-row:hover td {
+    background-color: #f9f9ff;
+}
+
+/* Baris Aktif (saat detail dibuka) */
+.ahs-table tbody tr.ahs-row.active td {
+    background-color: #e6e9ff; /* Warna highlight biru muda */
+}
+
+/* Pengaturan Kolom Spesifik di Tabel Utama */
+.col-deskripsi {
+    white-space: normal !important;
+    min-width: 200px;
+    max-width: 350px;
+}
+.col-hpp {
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+/* Kolom Aksi Data (Sticky Kanan) */
+.ahs-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    position: sticky;
+    right: 0;
+    background-color: white; /* Wajib agar tidak tembus pandang */
+    /* Menghilangkan border bawah di kolom aksi agar terlihat rapi */
+    border-bottom: 1px solid #eee; 
+}
+
+/* Background sticky kolom aksi saat hover/aktif */
+.ahs-table tbody tr.ahs-row:hover td.ahs-actions { background-color: #f9f9ff; }
+.ahs-table tbody tr.ahs-row.active td.ahs-actions { background-color: #e6e9ff; }
+
+
+/* Tombol Aksi */
+.btn-icon {
+    width: 32px; height: 32px;
+    border: none; border-radius: 4px;
+    cursor: pointer; 
+    font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    transition: opacity 0.2s;
+}
+.btn-icon:hover { opacity: 0.8; }
+
+.btn-view { background-color: #f1c40f; } /* Kuning */
+.btn-edit { background-color: #0000ff; } /* Biru */
+.btn-delete { background-color: #ff0000; } /* Merah */
+
+
+/* =========================================== */
+/* ## 3. GAYA BARIS DETAIL & NO DATA */
+/* =========================================== */
+
+/* Baris Detail */
+.ahs-detail-row td {
+    padding: 0;
+    background: #fdfdfd;
+    border-left: 4px solid #0000ff; /* Garis biru di kiri */
+    border-bottom: none !important; /* Hilangkan border bawah baris detail */
+}
+
+.no-data-cell {
+    text-align: center;
+    padding: 20px;
+    color: #888;
+    font-style: italic;
+}
+
+
+/* =========================================== */
+/* ## 4. GAYA KOMPONEN AHS DETAIL (Detail Item) */
+/* =========================================== */
+.ahs-detail {
+    padding: 15px;
+}
+
+/* Judul detail */
+.ahs-detail .detail-title {
+    background-color: #cde7ff;
+    padding: 10px;
+    border-radius: 8px;
+    font-weight: bold;
+    color: #004b8d;
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+/* Konteks untuk tabel detail agar tidak memengaruhi tabel luar */
+.ahs-detail .table-container {
+    width: 100%;
+    overflow-x: auto;
+}
+
+/* Tabel di dalam AhsDetail */
+.ahs-detail .detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    min-width: 700px; /* Minimal width untuk tabel detail */
+}
+
+.ahs-detail .detail-table th, .ahs-detail .detail-table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.ahs-detail .detail-table th {
+    background-color: #2d1666;
+}
+
+.ahs-detail .detail-table tfoot td.total-label {
+    text-align: right;
+    font-weight: bold;
+    background-color: #f9f9f9;
+}
+.ahs-detail .detail-table tfoot td.total-value {
+    font-weight: bold;
+    background-color: #f9f9f9;
+}
+
+/* Pengaturan Total Harga Pokok */
+.ahs-total {
+    margin-top: 10px;
+    font-weight: bold;
+    color: red;
+    text-align: right;
+    padding: 0 15px 15px 0; /* Padding agar total tidak menempel */
+}
