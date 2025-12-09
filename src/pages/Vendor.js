@@ -99,30 +99,29 @@ const Vendor = () => {
   const handleSave = async () => {
     try {
         if (isEditMode) {
-            // --- LOGIC EDIT (PUT) ---
-            const url = `${API_URL}/${formData.id}`;
-            await axios.put(url, formData);
-            alert(`Data vendor ${formData.id} berhasil diperbarui!`);
+            const url = `${API_URL}/${formData.vendor_id}`;
+
+            const payload = {
+                ...formData,
+                _method: "PUT",
+            };
+
+            await axios.post(url, payload); // ← pakai POST + _method PUT
+            alert(`Data vendor ${formData.vendor_id} berhasil diperbarui!`);
         } else {
-            // --- LOGIC TAMBAH BARU (POST) ---
-            // ID dan tahun (jika kosong) kini diurus oleh Back-end.
             const dataToSend = { ...formData };
-            // Hapus ID dari data POST karena BE yang akan membuat ID
-            delete dataToSend.id; 
+            delete dataToSend.vendor_id;
 
             await axios.post(API_URL, dataToSend);
-            alert(`Vendor berhasil ditambahkan!`);
+            alert("Vendor berhasil ditambahkan!");
         }
 
-        // Setelah Simpan/Edit berhasil, tutup modal dan ambil data terbaru
-        fetchVendors(); 
-        
+        fetchVendors();
     } catch (error) {
         console.error("Error saving data:", error.response?.data || error.message);
-        alert(`Gagal menyimpan data: ${error.response?.data?.message || 'Terjadi kesalahan server.'}`);
+        alert(`Gagal menyimpan data.`);
     }
 
-    // Reset & Tutup
     setShowModal(false);
     setFormData({ vendor_no: "", vendor_name: "", contact_name: "", contact_no: "", email: "", provinsi: "", kab: "", tahun: "" });
   };
@@ -134,12 +133,12 @@ const Vendor = () => {
   };
 
   // E. Logic Hapus (Mengganti manipulasi state lokal dengan API DELETE)
-  const handleDelete = async (id) => {
+  const handleDelete = async (vendor_id) => {
     if (window.confirm("Hapus vendor ini? Data akan hilang permanen!")) {
         try {
-            const url = `${API_URL}/${id}`;
+            const url = `${API_URL}/${vendor_id}`;
             await axios.delete(url);
-            alert(`Vendor ID ${id} berhasil dihapus.`);
+            alert(`Vendor ID ${vendor_id} berhasil dihapus.`);
             
             // Ambil data terbaru setelah penghapusan
             fetchVendors(); 
@@ -345,7 +344,7 @@ const Vendor = () => {
                           <button className="btn-view" onClick={() => handleView(v)} title="Lihat">👁️</button>
                           <button className="btn-edit" onClick={() => handleOpenEdit(v)} title="Edit">✏️</button>
                           {/* handleDelete tidak berubah, hanya isinya yang ganti */}
-                          <button className="btn-delete" onClick={() => handleDelete(v.id)} title="Hapus">🗑️</button>
+                          <button className="btn-delete" onClick={() => handleDelete(v.vendor_id)} title="Hapus">🗑️</button>
                         </div>
                       </td>
                     </tr>

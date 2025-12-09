@@ -1,156 +1,203 @@
 // src/components/UniversalSelector.jsx
 
-import React, { useState, useMemo } from "react";
-import "./ItemSelector.css"; 
+import React, { useState, useMemo, useEffect } from "react";
+import "./ItemSelector.css";
 
-const UniversalSelector = ({ itemList, ahsList, selectedObject, onSelect }) => {
-  const [showModal, setShowModal] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
+// Konstanta URL API
+const AHS_API_URL = "http://127.0.0.1:8000/api/ahs";
+const ITEMS_API_URL = "http://127.0.0.1:8000/api/items";
 
-  // === GABUNGKAN DATA & FILTER ===
-  const unifiedData = useMemo(() => {
-    const term = searchTerm.toLowerCase();
+const UniversalSelector = ({ selectedObject, onSelect }) => {
+    const [itemList, setItemList] = useState([]);
+    const [ahsList, setAhsList] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
 
-    // 1. Format Item (Material/Upah)
-    const formattedItems = (itemList || []).map(item => ({
-      ...item,
-      uniqueId: `ITEM-${item.id}`, 
-      type: 'ITEM', // Tetap disimpan di background untuk logic, tapi tidak ditampilkan
-      // Gunakan field 'kode' atau 'id' sesuai database Anda. 
-      // Jika di DB cuma angka (1), bisa di format string: `M_${item.id}`
-      displayId: item.kode || item.item_id || `M_${item.id}`, 
-      displayName: item.uraian || item.nama,
-      displayUnit: item.satuan,
-      displayPrice: item.hpp
-    }));
+    const [showModal, setShowModal] = useState(false);
+    const [searchTerm, setSearchTerm] = useState("");
 
-    // 2. Format AHS
-    const formattedAhs = (ahsList || []).map(ahs => ({
-      ...ahs,
-      uniqueId: `AHS-${ahs.id}`,
-      type: 'AHS',
-      // Gunakan 'ahs_no' jika ada, atau format manual
-      displayId: ahs.ahs_no || `AHS-${ahs.id}`,
-      displayName: ahs.deskripsi || ahs.uraian,
-      displayUnit: ahs.satuan || ahs.unit,
-      displayPrice: ahs.total || ahs.hpp || 0
-    }));
+    // ===== FETCH DATA =====
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                setIsLoading(true);
+                setError(null);
 
-    // 3. Gabung
-    const allData = [...formattedItems, ...formattedAhs];
+                const [itemsResponse, ahsResponse] = await Promise.all([
+                    fetch(ITEMS_API_URL),
+                    fetch(AHS_API_URL)
+                ]);
 
-    // 4. Filter
-    return allData.filter(obj => {
-      const idMatch = obj.displayId ? obj.displayId.toString().toLowerCase().includes(term) : false;
-      const nameMatch = obj.displayName ? obj.displayName.toLowerCase().includes(term) : false;
-      return idMatch || nameMatch;
-    });
+                if (!itemsResponse.ok) throw new Error("Gagal mengambil Item");
+                if (!ahsResponse.ok) throw new Error("Gagal mengambil AHS");
 
-  }, [itemList, ahsList, searchTerm]);
+                const itemsData = await itemsResponse.json();
+                const ahsData = await ahsResponse.json();
 
-  // === HANDLER ===
-  const handleSelect = (obj) => {
-    onSelect(obj); 
-    setShowModal(false); 
-    setSearchTerm(""); 
-  };
+                setItemList(itemsData?.data ?? []);
+                setAhsList(ahsData?.data ?? []);
+            } catch (err) {
+                console.error("Error:", err);
+                setError(err.message || "Gagal memuat data");
+            } finally {
+                setIsLoading(false);
+            }
+        };
 
-  const handleClose = () => {
-    setShowModal(false);
-    setSearchTerm("");
-  };
+        fetchData();
+    }, []);
 
-  return (
-    <div className="item-selector-container">
-      {/* INPUT TRIGGER */}
-      <div className="input-group">
-        <input
-          type="text"
-          className="selector-display"
-          placeholder="Cari Item atau AHS..."
-          // TAMPILAN SAAT DIPILIH: "ID - NAMA"
-          value={selectedObject ? `${selectedObject.displayId || selectedObject.id} - ${selectedObject.displayName || selectedObject.uraian || selectedObject.deskripsi}` : ""}
-          readOnly
-          onClick={() => setShowModal(true)}
-        />
-      </div>
+    // ===== GABUNGKAN DATA =====
+    const unifiedData = useMemo(() => {
+        if (isLoading) return [];
 
-      {/* MODAL */}
-      {showModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3>Pilih Item</h3>
-              <span className="close-icon" onClick={handleClose}>&times;</span>
+        const term = searchTerm.toLowerCase();
+
+        const formattedItems = itemList.map((item) => ({
+            ...item,
+            uniqueId: `ITEM-${item.id}`, // FIX DUPLICATE KEY
+            type: "ITEM",
+            displayId: item.item_no || `ITEM-${item.id}`,
+            displayName: item.deskripsi || item.nama || "-",
+            displayUnit: item.satuan || "-",
+            displayPrice: Number(item.hpp) || 0
+        }));
+
+        const formattedAhs = ahsList.map((ahs) => ({
+            ...ahs,
+            uniqueId: `AHS-${ahs.id}`, // FIX DUPLICATE KEY
+            type: "AHS",
+            displayId: ahs.ahs_no || `AHS-${ahs.id}`,
+            displayName: ahs.deskripsi || "-",
+            displayUnit: ahs.satuan || "-",
+            displayPrice: Number(ahs.harga_pokok_total) || 0
+        }));
+
+        const merged = [...formattedItems, ...formattedAhs];
+
+        return merged.filter((obj) => {
+            const idMatch = obj.displayId.toLowerCase().includes(term);
+            const nameMatch = obj.displayName.toLowerCase().includes(term);
+            return idMatch || nameMatch;
+        });
+    }, [itemList, ahsList, searchTerm, isLoading]);
+
+    // ===== HANDLER =====
+    const handleSelect = (obj) => {
+        onSelect(obj);
+        setShowModal(false);
+        setSearchTerm("");
+    };
+
+    return (
+        <div className="item-selector-container">
+
+            {/* DISPLAY FIELD */}
+            <div className="input-group">
+                <input
+                    type="text"
+                    className="selector-display"
+                    placeholder={isLoading ? "Memuat..." : "Klik untuk memilih..."}
+                    readOnly
+                    onClick={() => !isLoading && !error && setShowModal(true)}
+                    value={
+                        selectedObject
+                            ? `${selectedObject.displayId ?? "-"} - ${selectedObject.displayName ?? "-"}`
+                            : ""
+                    }
+                />
             </div>
 
-            <div className="modal-search-box">
-              <input
-                type="text"
-                placeholder="Ketik ID (Contoh: M_001 atau AHS-01) atau Nama..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                autoFocus
-              />
-            </div>
+            {/* Tampilkan error */}
+            {error && <p style={{ color: "red" }}>⚠ {error}</p>}
 
-            <div className="table-responsive">
-              <table className="item-table">
-                <thead>
-                  <tr>
-                    {/* Kolom Tipe Dihapus, ID jadi yang pertama */}
-                    <th style={{ width: '20%' }}>ID</th>
-                    <th>Uraian / Deskripsi</th>
-                    <th style={{ width: '10%' }}>Satuan</th>
-                    <th style={{ textAlign: "right", width: '20%' }}>Harga</th>
-                    <th style={{ textAlign: "center", width: '10%' }}>Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {unifiedData.length > 0 ? (
-                    unifiedData.map((obj) => (
-                      <tr key={obj.uniqueId} className="item-row" onClick={() => handleSelect(obj)}>
-                        {/* Tampilkan ID sebagai pembeda (M_... atau AHS-...) */}
-                        <td style={{ fontWeight: 'bold', color: '#333' }}>
-                            {obj.displayId}
-                        </td>
-                        <td>{obj.displayName}</td>
-                        <td>{obj.displayUnit}</td>
-                        <td style={{ textAlign: "right" }}>
-                          {Number(obj.displayPrice).toLocaleString("id-ID")}
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <button
-                            className="btn-pilih-small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSelect(obj);
-                            }}
-                          >
-                            Pilih
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan="5" style={{ textAlign: "center", padding: "20px" }}>
-                        Data tidak ditemukan.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            {/* === MODAL === */}
+            {showModal && (
+                <div className="modal-overlay" onClick={() => setShowModal(false)}>
+                    <div
+                        className="modal-content"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="modal-header">
+                            <h3>Pilih Item / AHS</h3>
+                            <span className="close-icon" onClick={() => setShowModal(false)}>
+                                ×
+                            </span>
+                        </div>
 
-            <div className="modal-footer">
-              <button className="btn-cancel" onClick={handleClose}>Batal</button>
-            </div>
-          </div>
+                        <div className="modal-search-box">
+                            <input
+                                type="text"
+                                placeholder="Cari berdasarkan ID atau nama..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+
+                        <div className="table-responsive">
+                            <table className="item-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Deskripsi</th>
+                                        <th>Satuan</th>
+                                        <th style={{ textAlign: "right" }}>Harga</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+
+                                <tbody>
+                                    {unifiedData.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={5} style={{ textAlign: "center" }}>
+                                                {isLoading ? "Memuat..." : "Tidak ada data."}
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        unifiedData.map((obj) => (
+                                            <tr
+                                                key={obj.uniqueId}
+                                                className="item-row"
+                                                onClick={() => handleSelect(obj)}
+                                            >
+                                                <td>{obj.displayId}</td>
+                                                <td>{obj.displayName}</td>
+                                                <td>{obj.displayUnit}</td>
+                                                <td style={{ textAlign: "right" }}>
+                                                    {obj.displayPrice.toLocaleString("id-ID")}
+                                                </td>
+                                                <td>
+                                                    <button
+                                                        className="btn-pilih-small"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleSelect(obj);
+                                                        }}
+                                                    >
+                                                        Pilih
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="modal-footer">
+                            <button
+                                className="btn-cancel"
+                                onClick={() => setShowModal(false)}
+                            >
+                                Tutup
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
-      )}
-    </div>
-  );
+    );
 };
 
 export default UniversalSelector;

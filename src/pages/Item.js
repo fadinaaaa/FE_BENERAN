@@ -250,8 +250,8 @@ const Item = () => {
             }
         }
 
-        if (formData.fotoFile) data.append("produk_foto", formData.fotoFile);
-        if (formData.docSpecFile) data.append("produk_dokumen", formData.docSpecFile);
+        if (formData.fotoFile) data.append("produk_foto[]", formData.fotoFile);
+        if (formData.docSpecFile) data.append("produk_dokumen[]", formData.docSpecFile);
 
         try {
             if (isEditMode) {
