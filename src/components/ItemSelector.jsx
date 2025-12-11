@@ -1,5 +1,3 @@
-// src/components/UniversalSelector.jsx
-
 import React, { useState, useMemo, useEffect } from "react";
 import "./ItemSelector.css";
 
@@ -84,7 +82,17 @@ const UniversalSelector = ({ selectedObject, onSelect }) => {
 
     // ===== HANDLER =====
     const handleSelect = (obj) => {
-        onSelect(obj);
+        // --- TAMBAHKAN LOG INI ---
+        console.log("1. Tombol Pilih Ditekan. Data:", obj);
+        console.log("2. Apakah props onSelect ada?", typeof onSelect);
+        // -------------------------
+
+        if (onSelect) {
+            onSelect(obj);
+        } else {
+            console.error("ERROR: Props onSelect tidak dikirim dari Parent!");
+        }
+
         setShowModal(false);
         setSearchTerm("");
     };

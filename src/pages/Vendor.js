@@ -41,28 +41,28 @@ const Vendor = () => {
 
   // Data yang akan ditampilkan di tabel adalah hasil dari vendors state
   // Logika Filter sekarang akan digantikan oleh Back-end melalui API
-  
+
   // === FUNGSI UTAMA: MENGAMBIL DATA DARI API ===
   const fetchVendors = async () => {
     setLoading(true);
     try {
-        // Membangun URL dengan query params (filter)
-        const params = new URLSearchParams();
-        if (search) params.append('search', search); 
-        if (filterProvinsi) params.append('provinsi', filterProvinsi);
-        if (filterKab) params.append('kab', filterKab);
-        if (filterTahun) params.append('tahun', filterTahun);
+      // Membangun URL dengan query params (filter)
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      if (filterProvinsi) params.append('provinsi', filterProvinsi);
+      if (filterKab) params.append('kab', filterKab);
+      if (filterTahun) params.append('tahun', filterTahun);
 
-        const url = `${API_URL}?${params.toString()}`;
-        
-        const response = await axios.get(url);
-        // Asumsi BE mengembalikan array vendor di response.data
-        setVendors(response.data);
+      const url = `${API_URL}?${params.toString()}`;
+
+      const response = await axios.get(url);
+      // Asumsi BE mengembalikan array vendor di response.data
+      setVendors(response.data);
     } catch (error) {
-        console.error("Error fetching data:", error);
-        alert("Gagal mengambil data vendor dari server.");
+      console.error("Error fetching data:", error);
+      alert("Gagal mengambil data vendor dari server.");
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -71,10 +71,17 @@ const Vendor = () => {
   useEffect(() => {
     // Panggil fetchVendors setiap kali filter berubah
     fetchVendors();
-  }, [filterProvinsi, filterKab, filterTahun, search]); 
+  }, [filterProvinsi, filterKab, filterTahun, search]);
 
   // Menggunakan 'vendors' untuk rendering tabel karena sudah difilter oleh BE
-  const vendorsToDisplay = vendors; 
+  const vendorsToDisplay = [...vendors].sort((a, b) => {
+    // Kita paksa ubah jadi integer agar aman
+    const idA = parseInt(a.vendor_no || a.id); 
+    const idB = parseInt(b.vendor_no || b.id);
+    
+    // Urutkan dari Kecil ke Besar (Ascending)
+    return idA - idB;
+  });
 
 
   // === 4. HANDLERS (LOGIC UTAMA) ===
@@ -95,35 +102,61 @@ const Vendor = () => {
     setShowModal(true);
   };
 
-  // C. Logic SIMPAN (Mengganti manipulasi state lokal dengan API POST/PUT)
   const handleSave = async () => {
     try {
-        if (isEditMode) {
-            const url = `${API_URL}/${formData.vendor_id}`;
+      if (isEditMode) {
+        // === LOGIC EDIT ===
+        const url = `${API_URL}/${formData.vendor_id}`;
+        const payload = { ...formData, _method: "PUT" };
 
-            const payload = {
-                ...formData,
-                _method: "PUT",
-            };
+        // 1. Kirim ke Server
+        const response = await axios.post(url, payload);
 
-            await axios.post(url, payload); // ← pakai POST + _method PUT
-            alert(`Data vendor ${formData.vendor_id} berhasil diperbarui!`);
-        } else {
-            const dataToSend = { ...formData };
-            delete dataToSend.vendor_id;
+        // 2. Update UI secara Manual (Supaya langsung berubah tanpa loading)
+        setVendors(prevVendors =>
+          prevVendors.map(item =>
+            item.vendor_id === formData.vendor_id ? { ...item, ...formData } : item
+          )
+        );
 
-            await axios.post(API_URL, dataToSend);
-            alert("Vendor berhasil ditambahkan!");
-        }
+        alert(`Data vendor ${formData.vendor_id} berhasil diperbarui!`);
+      } else {
+        // === LOGIC TAMBAH BARU ===
+        const dataToSend = { ...formData };
+        delete dataToSend.vendor_id;
 
-        fetchVendors();
+        // 1. Kirim ke Server & Simpan Responsenya
+        const response = await axios.post(API_URL, dataToSend);
+
+        // 2. UPDATE STATE LANGSUNG (Kunci agar muncul otomatis)
+        // Kita ambil data baru dari response backend (response.data)
+        // Lalu kita taruh di urutan paling atas array [...]
+        const newVendorData = response.data;
+
+        // Catatan: Jika Backend Laravel membungkus data dalam "data", 
+        // gunakan: const newVendorData = response.data.data;
+
+        setVendors(prevVendors => [...prevVendors, newVendorData]);
+
+        // Opsional: Kosongkan filter pencarian agar data baru pasti terlihat
+        setSearch("");
+        setFilterProvinsi("");
+
+        alert("Vendor berhasil ditambahkan!");
+      }
+
+      // 3. Reset Form & Tutup Modal
+      setShowModal(false);
+      setFormData({ vendor_no: "", vendor_name: "", contact_name: "", contact_no: "", email: "", provinsi: "", kab: "", tahun: "" });
+
+      // 4. (Opsional) Fetch ulang di background untuk memastikan sinkronisasi data
+      // Kita tidak perlu await ini agar UI tidak terasa lambat
+      fetchVendors();
+
     } catch (error) {
-        console.error("Error saving data:", error.response?.data || error.message);
-        alert(`Gagal menyimpan data.`);
+      console.error("Error saving data:", error.response?.data || error.message);
+      alert(`Gagal menyimpan data.`);
     }
-
-    setShowModal(false);
-    setFormData({ vendor_no: "", vendor_name: "", contact_name: "", contact_no: "", email: "", provinsi: "", kab: "", tahun: "" });
   };
 
   // D. Logic View Detail (Data sudah diambil, hanya menampilkan modal, TIDAK BERUBAH)
@@ -135,18 +168,18 @@ const Vendor = () => {
   // E. Logic Hapus (Mengganti manipulasi state lokal dengan API DELETE)
   const handleDelete = async (vendor_id) => {
     if (window.confirm("Hapus vendor ini? Data akan hilang permanen!")) {
-        try {
-            const url = `${API_URL}/${vendor_id}`;
-            await axios.delete(url);
-            alert(`Vendor ID ${vendor_id} berhasil dihapus.`);
-            
-            // Ambil data terbaru setelah penghapusan
-            fetchVendors(); 
+      try {
+        const url = `${API_URL}/${vendor_id}`;
+        await axios.delete(url);
+        alert(`Vendor ID ${vendor_id} berhasil dihapus.`);
 
-        } catch (error) {
-            console.error("Error deleting data:", error);
-            alert("Gagal menghapus data vendor.");
-        }
+        // Ambil data terbaru setelah penghapusan
+        fetchVendors();
+
+      } catch (error) {
+        console.error("Error deleting data:", error);
+        alert("Gagal menghapus data vendor.");
+      }
     }
   };
 
@@ -154,34 +187,34 @@ const Vendor = () => {
   const handleExport = async () => {
     const exportUrl = "http://localhost:8000/api/vendors/export";
     try {
-        const response = await axios.get(exportUrl, {
-            responseType: 'blob', // Penting untuk download file
-        });
-        
-        // Membuat URL objek dari blob data dan memicu download
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        // Asumsi BE mengirimkan header 'Content-Disposition' untuk nama file,
-        // jika tidak, gunakan nama default:
-        const contentDisposition = response.headers['content-disposition'];
-        let fileName = 'vendors_data.xlsx'; // Default
-        if (contentDisposition) {
-            const fileNameMatch = contentDisposition.match(/filename="(.+)"/i);
-            if (fileNameMatch.length > 1) fileName = fileNameMatch[1];
-        }
+      const response = await axios.get(exportUrl, {
+        responseType: 'blob', // Penting untuk download file
+      });
 
-        link.setAttribute('download', fileName);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(url);
-        
-        alert("Ekspor data berhasil!");
+      // Membuat URL objek dari blob data dan memicu download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      // Asumsi BE mengirimkan header 'Content-Disposition' untuk nama file,
+      // jika tidak, gunakan nama default:
+      const contentDisposition = response.headers['content-disposition'];
+      let fileName = 'vendors_data.xlsx'; // Default
+      if (contentDisposition) {
+        const fileNameMatch = contentDisposition.match(/filename="(.+)"/i);
+        if (fileNameMatch.length > 1) fileName = fileNameMatch[1];
+      }
+
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      alert("Export data berhasil!");
 
     } catch (error) {
-        console.error("Error exporting data:", error);
-        alert("Gagal mengekspor data vendor.");
+      console.error("Error exporting data:", error);
+      alert("Gagal mengexport data vendor.");
     }
   };
 
@@ -189,26 +222,26 @@ const Vendor = () => {
   const handleDownloadTemplate = async () => {
     const templateURL = "http://127.0.0.1:8000/api/vendors/template/download";
     try {
-        const response = await axios.get(templateURL, {
-            responseType: 'blob', // Penting untuk download file
-        });
+      const response = await axios.get(templateURL, {
+        responseType: 'blob', // Penting untuk download file
+      });
 
-        // Logika download file sama dengan Ekspor
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', 'template_import_vendor.xlsx'); // Sesuaikan nama file
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(url);
-        
-        alert("Template berhasil diunduh!");
-        setShowDropdown(false); // Tutup dropdown setelah aksi
-        
+      // Logika download file sama dengan Ekspor
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'template_import_vendor.xlsx'); // Sesuaikan nama file
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      alert("Template berhasil diunduh!");
+      setShowDropdown(false); // Tutup dropdown setelah aksi
+
     } catch (error) {
-        console.error("Error downloading template:", error);
-        alert("Gagal mengunduh template import.");
+      console.error("Error downloading template:", error);
+      alert("Gagal mengunduh template import.");
     }
   };
 
@@ -222,23 +255,23 @@ const Vendor = () => {
     formData.append('file', file); // Pastikan nama field ini sesuai dengan yang diterima Laravel
 
     try {
-        await axios.post(importUrl, formData, {
-            headers: {
-                'Content-Type': 'multipart/form-data'
-            }
-        });
-        
-        alert("Import data berhasil! Data terbaru dimuat.");
-        setShowDropdown(false);
-        fileInputRef.current.value = null; // Reset input file
-        fetchVendors(); // Muat ulang data untuk melihat hasil import
+      await axios.post(importUrl, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      alert("Import data berhasil! Data terbaru dimuat.");
+      setShowDropdown(false);
+      fileInputRef.current.value = null; // Reset input file
+      fetchVendors(); // Muat ulang data untuk melihat hasil import
 
     } catch (error) {
-        console.error("Error importing data:", error.response?.data || error.message);
-        alert(`Gagal mengimpor data: ${error.response?.data?.message || 'Terjadi kesalahan saat upload file.'}`);
+      console.error("Error importing data:", error.response?.data || error.message);
+      alert(`Gagal mengimpor data: ${error.response?.data?.message || 'Terjadi kesalahan saat upload file.'}`);
     }
   };
-  
+
   // =========================================================================
   // ====================== BAGIAN RENDER (HANYA MENGUBAH EVENT HANDLER) =====
   // =========================================================================
@@ -249,7 +282,7 @@ const Vendor = () => {
       <Sidebar />
 
       <div className="vendor-main">
-      <Header/>
+        <Header />
 
         {/* === TOPBAR === */}
         <div className="topbar-container">
@@ -272,11 +305,11 @@ const Vendor = () => {
 
           <div className="topbar-right">
             {/* Mengganti alert dengan handleExport */}
-            <button className="btn-action btn-export" onClick={handleExport}>📤 Ekspor</button>
+            <button className="btn-action btn-export" onClick={handleExport}>📤 Export</button>
 
             <div className="dropdown" style={{ position: 'relative', display: 'inline-block' }}>
               <button className="btn-action btn-import" onClick={() => setShowDropdown(!showDropdown)}>
-                📥 Impor ▼
+                📥 Import ▼
               </button>
               {showDropdown && (
                 <div className="dropdown-menu">
@@ -309,24 +342,24 @@ const Vendor = () => {
               <thead>
                 {/* ... (Header Tabel) ... */}
                 <tr>
-                    <th>ID</th>
-                    <th>Nama</th>
-                    <th>Contact</th>
-                    <th>Telepon</th>
-                    <th>Email</th>
-                    <th>Provinsi</th>
-                    <th>Kab</th>
-                    <th>Tahun</th>
-                    <th className="sticky-action">Action</th>
+                  <th>ID</th>
+                  <th>Nama</th>
+                  <th>Contact</th>
+                  <th>Telepon</th>
+                  <th>Email</th>
+                  <th>Provinsi</th>
+                  <th>Kab</th>
+                  <th>Tahun</th>
+                  <th className="sticky-action">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                    <tr>
-                        <td colSpan="9" style={{ textAlign: "center", padding: "20px", color: "#888" }}>
-                            Memuat data...
-                        </td>
-                    </tr>
+                  <tr>
+                    <td colSpan="9" style={{ textAlign: "center", padding: "20px", color: "#888" }}>
+                      Memuat data...
+                    </td>
+                  </tr>
                 ) : vendorsToDisplay.length > 0 ? (
                   vendorsToDisplay.map((v) => (
                     <tr key={v.id}>
@@ -369,11 +402,11 @@ const Vendor = () => {
               <h3>{isEditMode ? "Edit Data Vendor" : "Tambah Data Vendor"}</h3>
               <div className="modal-body">
                 {isEditMode && (
-                    <>
-                      <label>ID Vendor</label>
-                      <input value={formData.id} disabled style={{ backgroundColor: '#eee' }} />
-                    </>
-                  )}
+                  <>
+                    <label>ID Vendor</label>
+                    <input value={formData.id} disabled style={{ backgroundColor: '#eee' }} />
+                  </>
+                )}
                 {/* ... (Input form lainnya tidak berubah) ... */}
                 <label>Nama</label>
                 <input
@@ -431,27 +464,27 @@ const Vendor = () => {
             </div>
           </div>
         )}
-        
+
         {/* ... (Modal Detail View tidak berubah) ... */}
         {showDetail && selectedVendor && (
-            <div className="modal-overlay">
-                <div className="modal" style={{ position: 'relative' }}>
-                    <h3>Detail Vendor</h3>
-                    <div className="detail-content">
-                        <p><strong>ID:</strong> {selectedVendor.vendor_no}</p>
-                        <p><strong>Name:</strong> {selectedVendor.vendor_name}</p>
-                        <p><strong>Contact:</strong> {selectedVendor.contact_name}</p>
-                        <p><strong>Phone:</strong> {selectedVendor.contact_no}</p>
-                        <p><strong>Email:</strong> {selectedVendor.email}</p>
-                        <p><strong>Provinsi:</strong> {selectedVendor.provinsi}</p>
-                        <p><strong>Kab:</strong> {selectedVendor.kab}</p>
-                        <p><strong>Tahun:</strong> {selectedVendor.tahun}</p>
-                    </div>
-                    <div className="modal-buttons">
-                        <button className="btn-cancel" onClick={() => setShowDetail(false)}>Tutup</button>
-                    </div>
-                </div>
+          <div className="modal-overlay">
+            <div className="modal" style={{ position: 'relative' }}>
+              <h3>Detail Vendor</h3>
+              <div className="detail-content">
+                <p><strong>ID:</strong> {selectedVendor.vendor_no}</p>
+                <p><strong>Name:</strong> {selectedVendor.vendor_name}</p>
+                <p><strong>Contact:</strong> {selectedVendor.contact_name}</p>
+                <p><strong>Phone:</strong> {selectedVendor.contact_no}</p>
+                <p><strong>Email:</strong> {selectedVendor.email}</p>
+                <p><strong>Provinsi:</strong> {selectedVendor.provinsi}</p>
+                <p><strong>Kab:</strong> {selectedVendor.kab}</p>
+                <p><strong>Tahun:</strong> {selectedVendor.tahun}</p>
+              </div>
+              <div className="modal-buttons">
+                <button className="btn-cancel" onClick={() => setShowDetail(false)}>Tutup</button>
+              </div>
             </div>
+          </div>
         )}
       </div>
     </div>

@@ -328,9 +328,9 @@ const Item = () => {
                     </div>
 
                     <div className="topbar-right">
-                        <button className="btn-action btn-export" onClick={handleExport}>📥 Ekspor</button>
+                        <button className="btn-action btn-export" onClick={handleExport}>📥 Exspors</button>
                         <div className="dropdown" style={{ position: 'relative', display: 'inline-block' }}>
-                            <button className="btn-action btn-import" onClick={() => setShowDropdown(!showDropdown)}>📥 Impor ▼</button>
+                            <button className="btn-action btn-import" onClick={() => setShowDropdown(!showDropdown)}>📥 Import ▼</button>
                             {showDropdown && (
                                 <div className="dropdown-menu">
                                     <button onClick={handleDownloadTemplate}>📄 Unduh Template</button>

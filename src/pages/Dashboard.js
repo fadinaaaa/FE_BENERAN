@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios"; // Import Axios
+import axios from "axios";
 import Sidebar from "../components/Sidebar";
 import Header from "../components/header";
 import "../styles/Dashboard.css";
@@ -22,7 +22,7 @@ const Dashboard = () => {
   const [counts, setCounts] = useState({
     vendor: 0,
     item: 0,
-    ahs: 35, // Static karena belum ada endpoint AHS
+    ahs: 2, // Static karena belum ada endpoint AHS
   });
 
   // State untuk data grafik batang (Bar Chart)
@@ -45,17 +45,24 @@ const Dashboard = () => {
       name: month,
       vendor: 0,
       item: 0,
-      ahs: 5, // Data dummy/rata-rata untuk AHS
+      ahs: 2, // Data dummy/rata-rata untuk AHS
     }));
 
     // Helper function untuk increment bulan
     const incrementMonth = (dataList, key) => {
+      // PERBAIKAN 1: Cek apakah dataList benar-benar Array sebelum di-loop
+      if (!Array.isArray(dataList)) {
+        return; 
+      }
+
       dataList.forEach((data) => {
         // Asumsi data dari backend memiliki field 'created_at'
         if (data.created_at) {
           const date = new Date(data.created_at);
           const monthIndex = date.getMonth(); // 0 = Jan, 11 = Des
-          monthlyStats[monthIndex][key] += 1;
+          if (monthlyStats[monthIndex]) {
+             monthlyStats[monthIndex][key] += 1;
+          }
         }
       });
     };
@@ -75,8 +82,15 @@ const Dashboard = () => {
           axios.get("http://127.0.0.1:8000/api/items"),
         ]);
 
-        const vendors = vendorRes.data; // Sesuaikan jika response dibungkus (misal: res.data.data)
-        const items = itemRes.data;
+        // PERBAIKAN 2: Normalisasi data. Jika response dibungkus object { data: [...] }, ambil dalamnya.
+        // Jika response langsung array, ambil langsung. Jika null, pakai array kosong [].
+        const vendors = Array.isArray(vendorRes.data) 
+          ? vendorRes.data 
+          : (vendorRes.data.data || []);
+          
+        const items = Array.isArray(itemRes.data) 
+          ? itemRes.data 
+          : (itemRes.data.data || []);
 
         // 1. Update State Counts (Kartu Atas)
         setCounts((prev) => ({
@@ -89,7 +103,7 @@ const Dashboard = () => {
         setPieData([
           { name: "Vendor", value: vendors.length },
           { name: "Item", value: items.length },
-          { name: "AHS", value: 35 }, // Static
+          { name: "AHS", value: 2 }, // Static
         ]);
 
         // 3. Update Bar Chart Data (Aktivitas Bulanan)

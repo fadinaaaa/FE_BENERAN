@@ -110,13 +110,13 @@ const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
         setSelectedItemToAdd(item);
     };
 
-    const handleAddItem = () => {
+const handleAddItem = () => {
         if (!selectedItemToAdd || !currentItemVolume) {
             alert("Silakan pilih item dan isi volumenya.");
             return;
         }
 
-        // Cek duplikasi (mendukung kode atau id)
+        // Cek duplikasi
         const checkId = selectedItemToAdd.kode || selectedItemToAdd.id || selectedItemToAdd.item_id;
         const isDuplicate = items.some((item) => item.itemId === checkId);
 
@@ -126,11 +126,17 @@ const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
         }
 
         const itemToSave = {
-            itemId: checkId,
-            uraian: selectedItemToAdd.nama || selectedItemToAdd.uraian || selectedItemToAdd.deskripsi,
-            satuan: selectedItemToAdd.satuan,
+            // ID Asli (Integer) untuk dikirim ke Database/Backend
+            itemId: selectedItemToAdd.id, 
+            
+            // === [TAMBAHAN] ID Tampilan untuk Tabel (ambil dari UniversalSelector) ===
+            displayId: selectedItemToAdd.displayId || selectedItemToAdd.item_no || selectedItemToAdd.id,
+
+            // Ambil data lainnya
+            uraian: selectedItemToAdd.displayName || selectedItemToAdd.uraian,
+            satuan: selectedItemToAdd.displayUnit || selectedItemToAdd.satuan,
             volume: Number(currentItemVolume),
-            hpp: Number(selectedItemToAdd.harga || selectedItemToAdd.hpp || 0),
+            hpp: Number(selectedItemToAdd.displayPrice || selectedItemToAdd.hpp || 0),
         };
 
         setItems((prevItems) => [...prevItems, itemToSave]);
@@ -276,8 +282,8 @@ const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
 
                 <div style={inputWrapperStyle}>
                     <label style={labelStyle}>Upload Foto Produk</label>
-                    <input type="file" name="foto" onChange={handleChange} accept="image/*" style={{...inputStyle, padding: '7px'}} />
-                    {(formData.foto instanceof File) && <small style={{display:'block', marginTop:'5px', color:'green'}}>File terpilih: {formData.foto.name}</small>}
+                    <input type="file" name="foto" onChange={handleChange} accept="image/*" style={{ ...inputStyle, padding: '7px' }} />
+                    {(formData.foto instanceof File) && <small style={{ display: 'block', marginTop: '5px', color: 'green' }}>File terpilih: {formData.foto.name}</small>}
                 </div>
 
                 {/* 2. Spesifikasi (Dokumen & Teks Menyatu) */}
@@ -321,7 +327,8 @@ const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
                     <div style={{ flex: 3 }}>
                         <ItemSelector
                             itemList={allItemList}
-                            selectedItem={selectedItemToAdd}
+                            // Ubah 'selectedItem' menjadi 'selectedObject' (Sesuai kode Child Component)
+                            selectedObject={selectedItemToAdd}
                             onSelect={handleItemSelect}
                         />
                     </div>
@@ -349,6 +356,7 @@ const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                         <thead style={{ backgroundColor: '#f0f0f0' }}>
                             <tr>
+                                <th style={{ padding: '8px', width: '100px', textAlign: 'left' }}>ITEM ID</th>
                                 <th style={{ padding: '8px', textAlign: 'left' }}>Uraian</th>
                                 <th style={{ padding: '8px', width: '80px' }}>Satuan</th>
                                 <th style={{ padding: '8px', width: '80px', textAlign: 'center' }}>Vol</th>
@@ -360,6 +368,9 @@ const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
                         <tbody>
                             {items.length > 0 ? items.map((item, idx) => (
                                 <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
+                                    {/* === [PERUBAHAN] Tampilkan Display ID, kalau tidak ada pakai Item ID biasa === */}
+                                    <td style={{ padding: '8px' }}>{item.displayId || item.itemId}</td>
+
                                     <td style={{ padding: '8px' }}>{item.uraian}</td>
                                     <td style={{ padding: '8px' }}>{item.satuan}</td>
                                     <td style={{ padding: '8px', textAlign: 'center' }}>{item.volume}</td>
@@ -376,12 +387,16 @@ const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
                                     </td>
                                 </tr>
                             )) : (
-                                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '15px', color: '#888' }}>Belum ada rincian item.</td></tr>
+                                <tr>
+                                    <td colSpan="7" style={{ textAlign: 'center', padding: '15px', color: '#888' }}>
+                                        Belum ada rincian item.
+                                    </td>
+                                </tr>
                             )}
                         </tbody>
                         <tfoot style={{ fontWeight: 'bold', backgroundColor: '#fafafa' }}>
                             <tr>
-                                <td colSpan="4" style={{ padding: '10px', textAlign: 'right' }}>TOTAL HARGA POKOK:</td>
+                                <td colSpan="5" style={{ padding: '10px', textAlign: 'right' }}>TOTAL HARGA POKOK:</td>
                                 <td style={{ padding: '10px', textAlign: 'right' }}>
                                     {items.reduce((sum, i) => sum + (i.volume * i.hpp), 0).toLocaleString('id-ID')}
                                 </td>

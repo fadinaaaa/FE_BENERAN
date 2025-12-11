@@ -15,7 +15,7 @@ const AhsDetail = ({ selectedAhs }) => {
 
     // Hitung total dari items
     const items = selectedAhs.items || [];
-    const total = items.length > 0 
+    const total = items.length > 0
         ? items.reduce((sum, item) => sum + ((item.volume || 0) * (item.hpp || 0)), 0)
         : (selectedAhs.hpp || 0);
 
@@ -27,8 +27,8 @@ const AhsDetail = ({ selectedAhs }) => {
             </h4>
             <p className="detail-info" style={{ color: '#666', marginBottom: '15px', fontSize: '13px' }}>
                 {/* --- PERUBAHAN DI SINI: Ganti No AHS jadi ID --- */}
-                ID: <strong>{selectedAhs.id}</strong> • 
-                Satuan: <strong>{selectedAhs.satuan}</strong> • 
+                ID: <strong>{selectedAhs.id}</strong> •
+                Satuan: <strong>{selectedAhs.satuan}</strong> •
                 Vendor: <strong>{selectedAhs.vendor?.vendor_name || selectedAhs.vendor?.nama || "-"}</strong>
             </p>
 
@@ -49,7 +49,10 @@ const AhsDetail = ({ selectedAhs }) => {
                         {items.length > 0 ? (
                             items.map((item, idx) => (
                                 <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
-                                    <td style={{ padding: '8px' }}>{item.item_id || item.itemId}</td>
+                                    <td style={{ padding: '8px' }}>
+                                        {/* Cek semua kemungkinan nama property untuk ID */}
+                                        {item.displayId || item.item_id || item.itemId || item.id || "-"}
+                                    </td>
                                     <td style={{ padding: '8px' }}>{item.uraian}</td>
                                     <td style={{ padding: '8px' }}>{item.satuan}</td>
                                     <td style={{ padding: '8px', textAlign: 'center' }}>{item.volume}</td>
@@ -87,7 +90,7 @@ const AhsDetail = ({ selectedAhs }) => {
 // 2. SUB-KOMPONEN: AHS LIST TABLE (Tabel Utama)
 // ==================================================================
 const AhsListTable = ({ data, selectedId, onSelect, onEdit, onDelete }) => {
-    
+
     // Helper: Hitung Total HPP untuk kolom tabel utama
     const calculateTotal = (ahs) => {
         if (ahs.items && ahs.items.length > 0) {
@@ -109,7 +112,7 @@ const AhsListTable = ({ data, selectedId, onSelect, onEdit, onDelete }) => {
                     <thead>
                         <tr>
                             {/* --- PERUBAHAN DI SINI: Header jadi ID --- */}
-                            <th>ID</th> 
+                            <th>ID</th>
                             <th>Deskripsi</th>
                             <th>Satuan</th>
                             <th>Provinsi</th>
@@ -124,14 +127,14 @@ const AhsListTable = ({ data, selectedId, onSelect, onEdit, onDelete }) => {
                             data.map((ahs) => (
                                 <React.Fragment key={ahs.id}>
                                     {/* --- BARIS DATA UTAMA --- */}
-                                    <tr 
+                                    <tr
                                         className={`ahs-row ${ahs.id === selectedId ? "active" : ""}`}
                                         onClick={(e) => handleRowClick(e, ahs.id)}
                                         style={{ cursor: 'pointer' }}
                                     >
                                         {/* --- PERUBAHAN DI SINI: Tampilkan ahs.id --- */}
                                         <td>{ahs.id}</td>
-                                        
+
                                         <td className="col-deskripsi">{ahs.deskripsi}</td>
                                         <td>{ahs.satuan}</td>
                                         <td>{ahs.provinsi}</td>
@@ -140,7 +143,7 @@ const AhsListTable = ({ data, selectedId, onSelect, onEdit, onDelete }) => {
                                         <td className="col-hpp" style={{ fontWeight: 'bold', color: '#2e1a5e' }}>
                                             Rp {calculateTotal(ahs).toLocaleString('id-ID')}
                                         </td>
-                                        
+
                                         {/* Kolom Aksi */}
                                         <td className="ahs-actions sticky-action">
                                             <button
@@ -207,14 +210,14 @@ const Ahs = ({ dataAhsFromApp, onDeleteAhs }) => {
     const [filterProvinsi, setFilterProvinsi] = useState("");
     const [filterKab, setFilterKab] = useState("");
     const [filterTahun, setFilterTahun] = useState("");
-    
+
     // State untuk Accordion (ID yang sedang dibuka)
-    const [selectedId, setSelectedId] = useState(null); 
+    const [selectedId, setSelectedId] = useState(null);
     const [showDropdown, setShowDropdown] = useState(false);
 
     // === Handlers ===
     const handleNavigateAdd = () => navigate("/ahs/add");
-    
+
     const handleNavigateEdit = (id) => {
         navigate(`/ahs/edit/${id}`);
     };
@@ -233,12 +236,12 @@ const Ahs = ({ dataAhsFromApp, onDeleteAhs }) => {
     // Filter Logic
     const filteredList = ahsList.filter(item => {
         const term = search.toLowerCase();
-        const matchSearch = 
+        const matchSearch =
             // --- PERUBAHAN LOGIKA SEARCH: Menambahkan pencarian by ID ---
             (item.id && item.id.toString().toLowerCase().includes(term)) ||
-            (item.ahs_no && item.ahs_no.toLowerCase().includes(term)) || 
+            (item.ahs_no && item.ahs_no.toLowerCase().includes(term)) ||
             (item.deskripsi && item.deskripsi.toLowerCase().includes(term));
-        
+
         // Filter tambahan
         const matchProv = filterProvinsi ? (item.provinsi && item.provinsi.toLowerCase().includes(filterProvinsi.toLowerCase())) : true;
         const matchKab = filterKab ? (item.kabupaten && item.kabupaten.toLowerCase().includes(filterKab.toLowerCase())) : true;
@@ -258,12 +261,12 @@ const Ahs = ({ dataAhsFromApp, onDeleteAhs }) => {
                     <div className="topbar-left">
                         <div className="input-wrapper">
                             <span className="icon-search">🔍</span>
-                            <input 
-                                type="text" 
+                            <input
+                                type="text"
                                 // Update placeholder text
-                                placeholder="Cari " 
-                                value={search} 
-                                onChange={(e) => setSearch(e.target.value)} 
+                                placeholder="Cari "
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
                             />
                         </div>
                         <input type="text" placeholder="Provinsi" value={filterProvinsi} onChange={(e) => setFilterProvinsi(e.target.value)} />
@@ -272,10 +275,10 @@ const Ahs = ({ dataAhsFromApp, onDeleteAhs }) => {
                     </div>
 
                     <div className="topbar-right">
-                        <button className="btn-action btn-export" onClick={() => alert("Fitur Export belum aktif")}>📥 Ekspor</button>
-                        
+                        <button className="btn-action btn-export" onClick={() => alert("Fitur Export belum aktif")}>📥 Export</button>
+
                         <div className="dropdown" style={{ position: 'relative', display: 'inline-block' }}>
-                            <button className="btn-action btn-import" onClick={() => setShowDropdown(!showDropdown)}>📥 Impor ▼</button>
+                            <button className="btn-action btn-import" onClick={() => setShowDropdown(!showDropdown)}>📥 Import ▼</button>
                             {showDropdown && (
                                 <div className="dropdown-menu">
                                     <button onClick={() => alert("Download Template")}>📄 Unduh Template</button>
@@ -283,14 +286,14 @@ const Ahs = ({ dataAhsFromApp, onDeleteAhs }) => {
                                 </div>
                             )}
                         </div>
-                        
+
                         <button className="btn-action btn-new" onClick={handleNavigateAdd}>+ Baru</button>
                     </div>
                 </div>
 
                 {/* --- TABLE SECTION --- */}
                 <div className="vendor-content">
-                    <AhsListTable 
+                    <AhsListTable
                         data={filteredList}
                         selectedId={selectedId}
                         onSelect={setSelectedId}

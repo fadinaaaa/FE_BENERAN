@@ -1,37 +1,63 @@
-import React, { useState } from 'react';
-import './header.css'; // Pastikan file CSS ini diimpor
+// src/components/Header.js
+
+import React, { useState, useEffect } from 'react'; // Tambah useEffect
+import { useNavigate } from 'react-router-dom';
+import './header.css';
 
 const Header = () => {
-    // 1. State untuk mengontrol visibilitas dropdown
+    const navigate = useNavigate();
     const [isDropdownVisible, setDropdownVisible] = useState(false);
-    
-    // Data dummy (ganti dengan data admin/user yang sebenarnya)
-    const adminName = 'Admin'; 
+    const [username, setUsername] = useState('User'); // State untuk menampung nama
 
-    // 2. Fungsi untuk menangani klik ikon profil
+    // --- LOGIKA MENGAMBIL USERNAME ---
+    useEffect(() => {
+        // Ambil data 'username' yang disimpan di localStorage saat login
+        const storedUsername = localStorage.getItem('username');
+        
+        if (storedUsername) {
+            setUsername(storedUsername);
+        }
+    }, []); // Array kosong artinya dijalankan sekali saat komponen dimuat
+    // ---------------------------------
+
     const handleProfileClick = () => {
-        // Toggle visibilitas dropdown
         setDropdownVisible(prev => !prev);
     };
 
-    // 3. Fungsi untuk menangani logout
-    const handleLogout = () => {
-        alert('Admin berhasil Logout!'); // Ganti dengan logika logout yang sebenarnya (misalnya menghapus token, navigasi ke halaman login)
-        setDropdownVisible(false); // Tutup dropdown setelah logout
+    const handleLogout = async () => {
+        const token = localStorage.getItem('token');
+
+        try {
+            await fetch('http://127.0.0.1:8000/api/logout', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+        } catch (error) {
+            console.error('Logout API error:', error);
+        } finally {
+            // --- BERSIHKAN DATA SESI ---
+            localStorage.removeItem('token');     // Hapus Token
+            localStorage.removeItem('username');  // Hapus Username (PENTING)
+            
+            setDropdownVisible(false);
+            navigate('/'); 
+        }
     };
 
     return (
         <header 
             className="header-bar" 
-            // Style inline yang Anda berikan
             style={{ 
                 display: 'flex', 
                 justifyContent: 'flex-end', 
                 padding: '10px 25px', 
                 background: 'white', 
                 boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                position: 'relative', // PENTING: Untuk posisi dropdown
-                zIndex: 100 // Pastikan Header di atas konten lain
+                position: 'relative',
+                zIndex: 100
             }}
         >
             <div className="profile-container">
@@ -39,14 +65,18 @@ const Header = () => {
                 <button 
                     className="profile-icon" 
                     onClick={handleProfileClick}
+                    title={username} // Tooltip nama user saat di-hover
                 >
                     👤
                 </button>
 
-                {/* Dropdown Profil (Conditional Rendering) */}
+                {/* Dropdown Profil */}
                 {isDropdownVisible && (
                     <div className="profile-dropdown">
-                        <p className="admin-name">{adminName}</p>
+                        {/* Tampilkan variable username di sini */}
+                        <p className="admin-name" style={{ fontWeight: 'bold', padding: '0 10px' }}>
+                            Hi, {username}
+                        </p>
                         <hr />
                         <button 
                             className="logout-button" 
