@@ -33,6 +33,11 @@ const Vendor = () => {
   const [filterKab, setFilterKab] = useState("");
   const [filterTahun, setFilterTahun] = useState("");
 
+  const [provinsiOptions, setProvinsiOptions] = useState([]);
+  const [kabOptions, setKabOptions] = useState([]);
+  const [tahunOptions, setTahunOptions] = useState([]);
+
+
   // Dropdown & Ref
   const [showDropdown, setShowDropdown] = useState(false);
   const fileInputRef = useRef(null);
@@ -73,12 +78,25 @@ const Vendor = () => {
     fetchVendors();
   }, [filterProvinsi, filterKab, filterTahun, search]);
 
+  useEffect(() => {
+    if (vendors.length > 0) {
+      const provinsiSet = new Set(vendors.map(v => v.provinsi).filter(Boolean));
+      setProvinsiOptions([...provinsiSet]);
+
+      const kabSet = new Set(vendors.map(v => v.kab).filter(Boolean));
+      setKabOptions([...kabSet]);
+
+      const tahunSet = new Set(vendors.map(v => v.tahun).filter(Boolean));
+      setTahunOptions([...tahunSet].sort((a, b) => b - a));
+    }
+  }, [vendors]);
+
   // Menggunakan 'vendors' untuk rendering tabel karena sudah difilter oleh BE
   const vendorsToDisplay = [...vendors].sort((a, b) => {
     // Kita paksa ubah jadi integer agar aman
-    const idA = parseInt(a.vendor_no || a.id); 
+    const idA = parseInt(a.vendor_no || a.id);
     const idB = parseInt(b.vendor_no || b.id);
-    
+
     // Urutkan dari Kecil ke Besar (Ascending)
     return idA - idB;
   });
@@ -298,9 +316,46 @@ const Vendor = () => {
               />
             </div>
             {/* Filter-filter ini akan memicu useEffect untuk fetchVendors */}
-            <input placeholder="Provinsi" value={filterProvinsi} onChange={(e) => setFilterProvinsi(e.target.value)} />
-            <input placeholder="Kab" value={filterKab} onChange={(e) => setFilterKab(e.target.value)} />
-            <input placeholder="Tahun" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)} className="input-tahun" />
+            <input
+              list="provinsi-list"
+              placeholder="Provinsi"
+              value={filterProvinsi}
+              onChange={(e) => setFilterProvinsi(e.target.value)}
+            />
+
+            <datalist id="provinsi-list">
+              {provinsiOptions.map((prov, i) => (
+                <option key={i} value={prov} />
+              ))}
+            </datalist>
+
+            <input
+              list="kab-list"
+              placeholder="Kab"
+              value={filterKab}
+              onChange={(e) => setFilterKab(e.target.value)}
+            />
+
+            <datalist id="kab-list">
+              {kabOptions.map((kab, i) => (
+                <option key={i} value={kab} />
+              ))}
+            </datalist>
+
+            <input
+              list="tahun-list"
+              placeholder="Tahun"
+              value={filterTahun}
+              onChange={(e) => setFilterTahun(e.target.value)}
+              className="input-tahun"
+            />
+
+            <datalist id="tahun-list">
+              {tahunOptions.map((tahun, i) => (
+                <option key={i} value={tahun} />
+              ))}
+            </datalist>
+
           </div>
 
           <div className="topbar-right">
@@ -365,7 +420,7 @@ const Vendor = () => {
                     <tr key={v.id}>
                       {/* ... (Data Tabel tidak berubah) ... */}
                       <td>{v.vendor_no}</td>
-                      <td className="col-name">{v.vendor_name}</td>
+                      <td className="name">{v.vendor_name}</td>
                       <td>{v.contact_name}</td>
                       <td>{v.contact_no}</td>
                       <td>{v.email}</td>

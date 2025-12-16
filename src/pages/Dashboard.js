@@ -22,7 +22,7 @@ const Dashboard = () => {
   const [counts, setCounts] = useState({
     vendor: 0,
     item: 0,
-    ahs: 2, // Static karena belum ada endpoint AHS
+    ahs: 0, // Diubah dari static 2 menjadi 0
   });
 
   // State untuk data grafik batang (Bar Chart)
@@ -34,7 +34,7 @@ const Dashboard = () => {
   const COLORS = ["#4e73df", "#1cc88a", "#f6c23e"];
 
   // Fungsi untuk mengelompokkan data berdasarkan bulan (created_at)
-  const processMonthlyData = (vendors, items) => {
+  const processMonthlyData = (vendors, items, ahsList) => {
     const months = [
       "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
       "Jul", "Agu", "Sep", "Okt", "Nov", "Des"
@@ -45,7 +45,7 @@ const Dashboard = () => {
       name: month,
       vendor: 0,
       item: 0,
-      ahs: 2, // Data dummy/rata-rata untuk AHS
+      ahs: 0, // Diubah menjadi 0
     }));
 
     // Helper function untuk increment bulan
@@ -61,7 +61,7 @@ const Dashboard = () => {
           const date = new Date(data.created_at);
           const monthIndex = date.getMonth(); // 0 = Jan, 11 = Des
           if (monthlyStats[monthIndex]) {
-             monthlyStats[monthIndex][key] += 1;
+              monthlyStats[monthIndex][key] += 1;
           }
         }
       });
@@ -69,6 +69,7 @@ const Dashboard = () => {
 
     incrementMonth(vendors, "vendor");
     incrementMonth(items, "item");
+    incrementMonth(ahsList, "ahs"); // Tambahkan AHS
 
     return monthlyStats;
   };
@@ -76,38 +77,41 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Request ke Backend secara paralel
-        const [vendorRes, itemRes] = await Promise.all([
+        // Request ke Backend secara paralel (Menambahkan AHS)
+        const [vendorRes, itemRes, ahsRes] = await Promise.all([
           axios.get("http://127.0.0.1:8000/api/vendors"),
           axios.get("http://127.0.0.1:8000/api/items"),
+          axios.get("http://127.0.0.1:8000/api/ahs"), // Endpoint baru AHS
         ]);
 
-        // PERBAIKAN 2: Normalisasi data. Jika response dibungkus object { data: [...] }, ambil dalamnya.
-        // Jika response langsung array, ambil langsung. Jika null, pakai array kosong [].
-        const vendors = Array.isArray(vendorRes.data) 
-          ? vendorRes.data 
-          : (vendorRes.data.data || []);
-          
-        const items = Array.isArray(itemRes.data) 
-          ? itemRes.data 
-          : (itemRes.data.data || []);
+        // PERBAIKAN 2: Normalisasi data untuk semua endpoint
+        const normalizeData = (response) => {
+             return Array.isArray(response.data) 
+                ? response.data 
+                : (response.data.data || []);
+        };
+
+        const vendors = normalizeData(vendorRes);
+        const items = normalizeData(itemRes);
+        const ahsList = normalizeData(ahsRes); // Data AHS
 
         // 1. Update State Counts (Kartu Atas)
         setCounts((prev) => ({
           ...prev,
           vendor: vendors.length,
           item: items.length,
+          ahs: ahsList.length, // Mengambil jumlah data AHS
         }));
 
         // 2. Update Pie Chart Data
         setPieData([
           { name: "Vendor", value: vendors.length },
           { name: "Item", value: items.length },
-          { name: "AHS", value: 2 }, // Static
+          { name: "AHS", value: ahsList.length }, // Menggunakan jumlah data AHS
         ]);
 
         // 3. Update Bar Chart Data (Aktivitas Bulanan)
-        const processedBarData = processMonthlyData(vendors, items);
+        const processedBarData = processMonthlyData(vendors, items, ahsList);
         setBarData(processedBarData);
 
       } catch (error) {
@@ -124,25 +128,28 @@ const Dashboard = () => {
       <div className="content">
         <Header />
         <div className="dashboard-header">
-          <h2>Selamat Datang  👋</h2>
+          <h2>Selamat Datang 🖐️</h2>
         </div>
 
         {/* Grid 2 baris */}
         <div className="dashboard-grid">
           {/* Baris Pertama: 3 Card ringkas */}
           <div className="top-cards">
+            {/* Card Vendor */}
             <div className="dashboard-card">
               <FaIndustry className="card-icon vendor" />
               <h4>Jumlah Vendor</h4>
               <p>{counts.vendor}</p>
             </div>
 
+            {/* Card Item */}
             <div className="dashboard-card">
               <FaBoxOpen className="card-icon item" />
               <h4>Jumlah Item</h4>
               <p>{counts.item}</p>
             </div>
 
+            {/* Card AHS */}
             <div className="dashboard-card">
               <FaCalculator className="card-icon ahs" />
               <h4>Jumlah AHS</h4>
@@ -160,18 +167,20 @@ const Dashboard = () => {
                   <Pie
                     data={pieData.length > 0 ? pieData : [{name: 'Loading', value: 1}]} // Fallback saat loading
                     dataKey="value"
+                    nameKey="name"
                     outerRadius={80}
-                    label
+                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                   >
                     {pieData.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
                   <Legend verticalAlign="bottom" height={36}/>
-                  <Tooltip />
+                  <Tooltip formatter={(value, name) => [value, name]}/>
                 </PieChart>
               </ResponsiveContainer>
             </div>
+            
 
             {/* BAR CHART */}
             <div className="dashboard-card chart-card">
@@ -184,10 +193,11 @@ const Dashboard = () => {
                   <Legend />
                   <Bar dataKey="vendor" name="Vendor" fill="#1cc88a" />
                   <Bar dataKey="item" name="Item" fill="#4e73df" />
-                  <Bar dataKey="ahs" name="AHS" fill="#f6c23e" />
+                  <Bar dataKey="ahs" name="AHS" fill="#f6c23e" /> {/* Tambahkan Bar AHS */}
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            
           </div>
         </div>
       </div>

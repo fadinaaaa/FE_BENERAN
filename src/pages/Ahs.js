@@ -1,83 +1,192 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
+
+// Import komponen lain
 import Sidebar from "../components/Sidebar";
 import Header from "../components/header";
 
-// Pastikan file CSS ini ada (untuk styling item dan tabel)
 import "./Item.css";
 import "../components/AhsList.css";
 
 // ==================================================================
-// 1. SUB-KOMPONEN: AHS DETAIL (Tampilan Rincian Item saat Accordion dibuka)
+// KONSTANTA API
 // ==================================================================
+const API_URL = "http://127.0.0.1:8000/api/ahs"; // Endpoint Utama AHS
+const API_TEMPLATE_URL = "http://127.0.0.1:8000/api/ahs/import/template";
+const API_IMPORT_URL = `${API_URL}/import`;
+
+// ==================================================================
+// 1. SUB-KOMPONEN: AHS DETAIL (DETAIL PRODUK + TABEL RINCIAN)
+// ==================================================================
+// ... (AhsDetail tetap sama, perbaikan URL foto sudah diterapkan) ...
 const AhsDetail = ({ selectedAhs }) => {
+    const [showFotoModal, setShowFotoModal] = useState(false);
+
     if (!selectedAhs) return null;
 
-    // Hitung total dari items
-    const items = selectedAhs.items || [];
+    const items = Array.isArray(selectedAhs.items) ? selectedAhs.items : [];
+
+    const photos = Array.isArray(selectedAhs.foto)
+        ? selectedAhs.foto
+        : selectedAhs.foto
+            ? [selectedAhs.foto]
+            : [];
+
     const total = items.length > 0
-        ? items.reduce((sum, item) => sum + ((item.volume || 0) * (item.hpp || 0)), 0)
-        : (selectedAhs.hpp || 0);
+        ? items.reduce((sum, item) => sum + (Number(item.volume || 0) * Number(item.hpp || 0)), 0)
+        : Number(selectedAhs.hpp || 0);
+
+    const formatRupiah = (number) => {
+        return Number(number).toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 });
+    };
+
+    const ahsDisplayId = selectedAhs.ahs ? selectedAhs.ahs.toString() : '-';
 
     return (
         <div className="ahs-detail">
-            {/* Header Detail */}
-            <h4 className="detail-title" style={{ marginTop: 0, color: '#2e1a5e' }}>
+            <h4 className="detail-title">
                 {selectedAhs.deskripsi}
             </h4>
-            <p className="detail-info" style={{ color: '#666', marginBottom: '15px', fontSize: '13px' }}>
-                {/* --- PERUBAHAN DI SINI: Ganti No AHS jadi ID --- */}
-                ID: <strong>{selectedAhs.id}</strong> •
+            <p className="detail-info">
+                ID: <strong>{ahsDisplayId}</strong> •
                 Satuan: <strong>{selectedAhs.satuan}</strong> •
-                Vendor: <strong>{selectedAhs.vendor?.vendor_name || selectedAhs.vendor?.nama || "-"}</strong>
+                Vendor: <strong>{selectedAhs.vendor?.vendor_name || selectedAhs.vendor?.nama || '-'}</strong>
             </p>
+            <div className="ahs-produk-detail">
+                <div className="detail-item">
+                    <div className="label">Merek</div>
+                    <div className="value">{selectedAhs.merek || '-'}</div>
+                </div>
 
-            {/* Tabel Rincian */}
+                <div className="detail-item">
+                    <div className="label">Vendor</div>
+                    <div className="value">
+                        {selectedAhs.vendor?.vendor_name || selectedAhs.vendor?.nama || '-'}
+                    </div>
+                </div>
+
+                <div className="detail-item">
+                    <div className="label">Deskripsi Produk</div>
+                    <div className="value">
+                        {selectedAhs.deskripsiProduk || '-'}
+                    </div>
+                </div>
+
+                <div className="detail-item">
+                    <div className="label">Spesifikasi (Dokumen & Teks)</div>
+
+                    <div className="value value-stack">
+                        <div className="value-file">
+                            {selectedAhs.spesifikasi?.dokumen ? (
+                                <span className="file-name">
+                                    📄 {selectedAhs.spesifikasi.dokumen}
+                                </span>
+                            ) : (
+                                <span className="file-empty">Tidak ada dokumen</span>
+                            )}
+                        </div>
+
+                        <div className="value-textarea">
+                            {selectedAhs.spesifikasi?.teks || "-"}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="detail-item">
+                    <div className="label">Foto Produk</div>
+                    <div className="value value-stack">
+                        {photos.length > 0 ? (
+                            <>
+                                <div
+                                    className="foto-wrapper"
+                                    onClick={() => setShowFotoModal(true)}
+                                >
+                                    <img
+                                        src={`http://127.0.0.1:8000/storage/${photos[0]}`}
+                                        alt="Foto Produk"
+                                        className="foto-preview"
+                                    />
+                                    <div className="foto-caption">
+                                        🔍 Detail Foto ({photos.length})
+                                    </div>
+                                </div>
+
+                                {showFotoModal && (
+                                    <div
+                                        className="foto-modal-overlay"
+                                        onClick={() => setShowFotoModal(false)}
+                                    >
+                                        <div
+                                            className="foto-modal-content"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <div className="foto-scroll">
+                                                {photos.map((foto, i) => (
+                                                    <img
+                                                        key={i}
+                                                        src={`http://127.0.0.1:8000/storage/${foto}`}
+                                                        alt={`Foto ${i + 1}`}
+                                                        className="foto-modal-image"
+                                                    />
+                                                ))}
+                                            </div>
+
+                                            <button
+                                                className="foto-modal-btn"
+                                                onClick={() => setShowFotoModal(false)}
+                                            >
+                                                Tutup
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <div className="value-textarea no-photo">
+                                Tidak ada foto
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
             <div className="table-container">
-                <table className="detail-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <table className="detail-table">
                     <thead>
-                        <tr style={{ background: '#f4f4f4', textAlign: 'left' }}>
-                            <th style={{ padding: '8px' }}>ITEM ID</th>
-                            <th style={{ padding: '8px' }}>URAIAN</th>
-                            <th style={{ padding: '8px' }}>SATUAN</th>
-                            <th style={{ padding: '8px', textAlign: 'center' }}>VOLUME</th>
-                            <th style={{ padding: '8px', textAlign: 'right' }}>HPP (Rp)</th>
-                            <th style={{ padding: '8px', textAlign: 'right' }}>JUMLAH (Rp)</th>
+                        <tr>
+                            <th>ITEM ID</th>
+                            <th>URAIAN</th>
+                            <th>SATUAN</th>
+                            <th>VOLUME</th>
+                            <th>HPP (Rp)</th>
+                            <th>JUMLAH (Rp)</th>
                         </tr>
                     </thead>
                     <tbody>
                         {items.length > 0 ? (
                             items.map((item, idx) => (
-                                <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
-                                    <td style={{ padding: '8px' }}>
-                                        {/* Cek semua kemungkinan nama property untuk ID */}
-                                        {item.displayId || item.item_id || item.itemId || item.id || "-"}
-                                    </td>
-                                    <td style={{ padding: '8px' }}>{item.uraian}</td>
-                                    <td style={{ padding: '8px' }}>{item.satuan}</td>
-                                    <td style={{ padding: '8px', textAlign: 'center' }}>{item.volume}</td>
-                                    <td style={{ padding: '8px', textAlign: 'right' }}>
-                                        {Number(item.hpp).toLocaleString('id-ID')}
-                                    </td>
-                                    <td style={{ padding: '8px', textAlign: 'right' }}>
-                                        {(item.volume * item.hpp).toLocaleString('id-ID')}
-                                    </td>
+                                <tr key={idx}>
+                                    <td>{item.itemId || item.item_id || item.id || '-'}</td>
+                                    <td>{item.uraian}</td>
+                                    <td>{item.satuan}</td>
+                                    <td className="center">{Number(item.volume).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td className="right">{formatRupiah(item.hpp)}</td>
+                                    <td className="right">{formatRupiah(Number(item.volume) * Number(item.hpp))}</td>
                                 </tr>
                             ))
                         ) : (
                             <tr>
-                                <td colSpan="6" style={{ padding: '15px', textAlign: 'center', color: '#999' }}>
+                                <td colSpan="6" className="no-data">
                                     Tidak ada rincian item.
                                 </td>
                             </tr>
                         )}
                     </tbody>
                     <tfoot>
-                        <tr style={{ fontWeight: 'bold', background: '#eef2f5' }}>
-                            <td colSpan="5" style={{ padding: '10px', textAlign: 'right' }}>TOTAL</td>
-                            <td style={{ padding: '10px', textAlign: 'right' }}>
-                                {total.toLocaleString('id-ID')}
-                            </td>
+                        <tr>
+                            <td colSpan="5" className="right">TOTAL</td>
+                            <td className="right" style={{ fontWeight: 'bold' }}>{formatRupiah(total)}</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -86,23 +195,23 @@ const AhsDetail = ({ selectedAhs }) => {
     );
 };
 
+
 // ==================================================================
-// 2. SUB-KOMPONEN: AHS LIST TABLE (Tabel Utama)
+// 2. SUB-KOMPONEN: AHS LIST TABLE (TETAP SAMA)
 // ==================================================================
+// ... (AhsListTable tetap sama) ...
 const AhsListTable = ({ data, selectedId, onSelect, onEdit, onDelete }) => {
 
-    // Helper: Hitung Total HPP untuk kolom tabel utama
     const calculateTotal = (ahs) => {
         if (ahs.items && ahs.items.length > 0) {
-            return ahs.items.reduce((sum, item) => sum + (item.volume * item.hpp), 0);
+            return ahs.items.reduce((sum, item) => sum + (Number(item.volume || 0) * Number(item.hpp || 0)), 0);
         }
-        return ahs.hpp || 0;
+        return Number(ahs.hpp || 0);
     };
 
-    // Handler klik baris (Toggle Accordion)
-    const handleRowClick = (e, id) => {
+    const handleRowClick = (e, ahsId) => {
         e.stopPropagation();
-        onSelect(id === selectedId ? null : id);
+        onSelect(ahsId === selectedId ? null : ahsId); // Toggle detail
     };
 
     return (
@@ -111,12 +220,11 @@ const AhsListTable = ({ data, selectedId, onSelect, onEdit, onDelete }) => {
                 <table className="ahs-table">
                     <thead>
                         <tr>
-                            {/* --- PERUBAHAN DI SINI: Header jadi ID --- */}
                             <th>ID</th>
                             <th>Deskripsi</th>
                             <th>Satuan</th>
                             <th>Provinsi</th>
-                            <th>Kabupaten</th>
+                            <th>Kab</th>
                             <th>Tahun</th>
                             <th>Harga Pokok Total</th>
                             <th className="sticky-action">Aksi</th>
@@ -125,53 +233,39 @@ const AhsListTable = ({ data, selectedId, onSelect, onEdit, onDelete }) => {
                     <tbody>
                         {data.length > 0 ? (
                             data.map((ahs) => (
-                                <React.Fragment key={ahs.id}>
-                                    {/* --- BARIS DATA UTAMA --- */}
+                                <React.Fragment key={ahs.ahs_id || `temp-${Math.random()}`}>
                                     <tr
-                                        className={`ahs-row ${ahs.id === selectedId ? "active" : ""}`}
-                                        onClick={(e) => handleRowClick(e, ahs.id)}
+                                        className={`ahs-row ${ahs.ahs_id === selectedId ? "active" : ""}`}
+                                        onClick={(e) => handleRowClick(e, ahs.ahs_id)}
                                         style={{ cursor: 'pointer' }}
                                     >
-                                        {/* --- PERUBAHAN DI SINI: Tampilkan ahs.id --- */}
-                                        <td>{ahs.id}</td>
-
+                                        <td>{ahs.ahs || '-'}</td>
                                         <td className="col-deskripsi">{ahs.deskripsi}</td>
                                         <td>{ahs.satuan}</td>
-                                        <td>{ahs.provinsi}</td>
-                                        <td>{ahs.kabupaten}</td>
-                                        <td>{ahs.tahun}</td>
+                                        <td>{ahs.provinsi || '-'}</td>
+                                        <td>{ahs.kab || '-'}</td>
+                                        <td>{ahs.tahun || '-'}</td>
                                         <td className="col-hpp" style={{ fontWeight: 'bold', color: '#2e1a5e' }}>
                                             Rp {calculateTotal(ahs).toLocaleString('id-ID')}
                                         </td>
-
-                                        {/* Kolom Aksi */}
                                         <td className="ahs-actions sticky-action">
                                             <button
                                                 className="btn-icon btn-view"
-                                                title={ahs.id === selectedId ? "Tutup Detail" : "Lihat Detail"}
-                                                onClick={(e) => handleRowClick(e, ahs.id)}
+                                                onClick={(e) => handleRowClick(e, ahs.ahs_id)}
                                             >
-                                                {ahs.id === selectedId ? "❌" : "👁️"}
+                                                {ahs.ahs_id === selectedId ? '❌' : '👁️'}
                                             </button>
                                             <button
                                                 className="btn-icon btn-edit"
-                                                title="Edit AHS"
-                                                onClick={(e) => { e.stopPropagation(); onEdit(ahs.id); }}
-                                            >
-                                                ✏️
-                                            </button>
+                                                onClick={(e) => { e.stopPropagation(); onEdit(ahs.ahs_id); }}
+                                            >✏️</button>
                                             <button
                                                 className="btn-icon btn-delete"
-                                                title="Hapus AHS"
-                                                onClick={(e) => { e.stopPropagation(); onDelete(ahs.id); }}
-                                            >
-                                                🗑️
-                                            </button>
+                                                onClick={(e) => { e.stopPropagation(); onDelete(ahs.ahs_id); }}
+                                            >🗑️</button>
                                         </td>
                                     </tr>
-
-                                    {/* --- BARIS DETAIL (ACCORDION) --- */}
-                                    {ahs.id === selectedId && (
+                                    {ahs.ahs_id === selectedId && (
                                         <tr className="ahs-detail-row">
                                             <td colSpan="8" style={{ padding: 0, border: 'none' }}>
                                                 <div style={{ padding: '20px', backgroundColor: '#fcfcfc', borderBottom: '2px solid #ddd' }}>
@@ -196,59 +290,247 @@ const AhsListTable = ({ data, selectedId, onSelect, onEdit, onDelete }) => {
     );
 };
 
+
 // ==================================================================
-// 3. KOMPONEN UTAMA: HALAMAN AHS (Main Page)
+// 3. KOMPONEN UTAMA: HALAMAN AHS
 // ==================================================================
-const Ahs = ({ dataAhsFromApp, onDeleteAhs }) => {
+const Ahs = () => {
     const navigate = useNavigate();
 
-    // Menggunakan data dari props (dari App.js) atau fallback ke array kosong
-    const ahsList = dataAhsFromApp || [];
+    const [ahsList, setAhsList] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
-    // === UI States ===
-    const [search, setSearch] = useState("");
-    const [filterProvinsi, setFilterProvinsi] = useState("");
-    const [filterKab, setFilterKab] = useState("");
-    const [filterTahun, setFilterTahun] = useState("");
-
-    // State untuk Accordion (ID yang sedang dibuka)
+    // State Filter & Topbar
+    const [search, setSearch] = useState('');
+    const [filterProvinsi, setFilterProvinsi] = useState('');
+    const [filterKab, setFilterKab] = useState('');
+    const [filterTahun, setFilterTahun] = useState('');
     const [selectedId, setSelectedId] = useState(null);
     const [showDropdown, setShowDropdown] = useState(false);
 
-    // === Handlers ===
-    const handleNavigateAdd = () => navigate("/ahs/add");
+    // === OPTIONS DROPDOWN (DARI DATABASE) ===
+    const [provinsiOptions, setProvinsiOptions] = useState([]);
+    const [kabOptions, setKabOptions] = useState([]);
+    const [tahunOptions, setTahunOptions] = useState([]);
 
-    const handleNavigateEdit = (id) => {
-        navigate(`/ahs/edit/${id}`);
+    // === KONTROL DROPDOWN ===
+    const [showProvDD, setShowProvDD] = useState(false);
+    const [showKabDD, setShowKabDD] = useState(false);
+    const [showTahunDD, setShowTahunDD] = useState(false);
+
+
+    // Ref untuk input file tersembunyi
+    const fileInputRef = useRef(null);
+
+
+    // === FUNGSI FETCH DATA ===
+    const fetchDataAhs = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const response = await axios.get(API_URL);
+            const data = response.data.data || response.data;
+            const validatedData = Array.isArray(data) ? data.filter(item => item && item.ahs_id != null) : [];
+            setAhsList(validatedData);
+            setSelectedId(null);
+
+        } catch (err) {
+            console.error("Gagal mengambil data AHS:", err);
+            setError("Gagal mengambil data AHS. Cek koneksi API.");
+            setAhsList([]);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleDelete = (id) => {
-        if (window.confirm("Yakin hapus data AHS ini?")) {
-            // Panggil fungsi delete yang dikirim dari App.js
-            if (onDeleteAhs) {
-                onDeleteAhs(id);
-                // Tutup detail jika yang dihapus sedang terbuka
-                if (selectedId === id) setSelectedId(null);
+    useEffect(() => {
+        fetchDataAhs();
+    }, []);
+
+    // === ISI DROPDOWN FILTER DARI DATA AHS ===
+    useEffect(() => {
+        if (ahsList.length > 0) {
+            const provSet = new Set(
+                ahsList.map(a => a.provinsi).filter(Boolean)
+            );
+            setProvinsiOptions([...provSet]);
+
+            const kabSet = new Set(
+                ahsList.map(a => a.kab).filter(Boolean)
+            );
+            setKabOptions([...kabSet]);
+
+            const tahunSet = new Set(
+                ahsList.map(a => a.tahun).filter(Boolean)
+            );
+            setTahunOptions([...tahunSet].sort((a, b) => b - a));
+        }
+    }, [ahsList]);
+
+
+    // === FUNGSI CRUD & NAVIGASI ===
+    const handleNavigateAdd = () => navigate('/ahs/add');
+    const handleNavigateEdit = (ahsId) => navigate(`/ahs/edit/${ahsId}`);
+
+    const handleDelete = async (ahsId) => {
+        if (window.confirm(`Yakin hapus data AHS ID: ${ahsId}? Tindakan ini tidak bisa dibatalkan.`)) {
+            try {
+                await axios.delete(`${API_URL}/${ahsId}`);
+                setAhsList(prevList => prevList.filter(ahs => ahs.ahs_id !== ahsId));
+                if (selectedId === ahsId) setSelectedId(null);
+                alert(`Data AHS ID: ${ahsId} berhasil dihapus.`);
+            } catch (error) {
+                console.error("Gagal menghapus data AHS:", error);
+                alert(`Gagal menghapus data AHS ID: ${ahsId}. Cek koneksi API. Detail: ${error.message}`);
             }
         }
     };
 
-    // Filter Logic
-    const filteredList = ahsList.filter(item => {
+
+    // ==================================================================
+    // 📢 LOGIC EKSPOR & UNDUH TEMPLATE (TANPA isProcessing)
+    // ==================================================================
+
+    const handleDownloadResponse = (response, defaultFilename) => {
+        const contentDisposition = response.headers['content-disposition'];
+        let filename = defaultFilename;
+
+        // Ambil nama file dari header Content-Disposition
+        if (contentDisposition) {
+            const matches = /filename\*?=(?:['"]?)(.+?)(?:['"]?)(?:;|$)/i.exec(contentDisposition);
+            if (matches && matches[1]) {
+                filename = decodeURIComponent(matches[1].replace(/utf-8''/i, ''));
+            }
+        }
+
+        const blob = new Blob([response.data], {
+            type: response.headers['content-type']
+        });
+
+        // Memaksa unduhan tanpa perlu state loading
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        return filename;
+    };
+
+
+    /**
+     * 1. Handler untuk EKSPOR Data (Langsung Unduh)
+     */
+    const handleExport = async () => {
+        const params = new URLSearchParams({
+            search: search || '',
+            provinsi: filterProvinsi || '',
+            kab: filterKab || '',
+            tahun: filterTahun || '',
+        }).toString();
+
+        try {
+            const response = await axios.get(`${API_URL}/export?${params}`, {
+                responseType: 'blob', // PENTING
+            });
+
+            handleDownloadResponse(response, 'data_ahs_export.xlsx');
+            // Hilangkan alert sukses agar terasa lebih 'langsung'
+            // alert(`Data berhasil diekspor!`);
+
+        } catch (error) {
+            console.error("Error saat Ekspor Data:", error);
+            alert(`Gagal Ekspor Data. Cek koneksi dan API endpoint /ahs/export.`);
+        }
+    };
+
+    /**
+     * 2. Handler untuk UNDUH TEMPLATE (Langsung Unduh)
+     */
+    const handleDownloadTemplate = async () => {
+        setShowDropdown(false);
+
+        try {
+            const response = await axios.get(API_TEMPLATE_URL, {
+                responseType: 'blob', // PENTING
+            });
+
+            handleDownloadResponse(response, 'template_import_ahs.xlsx');
+            // Hilangkan alert sukses agar terasa lebih 'langsung'
+            // alert(`Template berhasil diunduh!`);
+
+        } catch (error) {
+            console.error("Error saat Unduh Template:", error);
+            alert("Gagal Unduh Template. Pastikan API Template berjalan.");
+        }
+    };
+
+    /**
+     * Handler untuk memicu input file tersembunyi
+     */
+    const handleSelectFile = () => {
+        if (fileInputRef.current) {
+            fileInputRef.current.click();
+        }
+        setShowDropdown(false);
+    };
+
+    /**
+     * 3. Handler untuk Impor File (Tetap ada loading/alert karena melibatkan perubahan data)
+     */
+    const handleFileChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) {
+            e.target.value = null;
+            return;
+        }
+
+        // Feedback sederhana untuk proses impor
+        const loadingMessage = alert(`Memulai Impor file ${file.name}... Mohon tunggu.`);
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await axios.post(API_IMPORT_URL, formData);
+
+            console.log("Respons Impor:", response.data);
+            // Feedback sukses
+            alert(`Impor file ${file.name} berhasil! Pesan: ${response.data.message || 'Data berhasil diimpor.'}`);
+
+            fetchDataAhs();
+
+        } catch (error) {
+            console.error("Error saat Impor File:", error);
+            const errorMessage = error.response?.data?.message || error.message || "Terjadi kesalahan saat impor.";
+            alert(`Gagal Impor File ${file.name}: ${errorMessage}`);
+        } finally {
+            e.target.value = null;
+        }
+    };
+
+    // === LOGIKA FILTER DAN SEARCH (Tetap Sama) ===
+    const filteredList = useMemo(() => {
         const term = search.toLowerCase();
-        const matchSearch =
-            // --- PERUBAHAN LOGIKA SEARCH: Menambahkan pencarian by ID ---
-            (item.id && item.id.toString().toLowerCase().includes(term)) ||
-            (item.ahs_no && item.ahs_no.toLowerCase().includes(term)) ||
-            (item.deskripsi && item.deskripsi.toLowerCase().includes(term));
+        const provTerm = filterProvinsi.toLowerCase();
+        const kabTerm = filterKab.toLowerCase();
+        const tahunTerm = filterTahun.toLowerCase();
 
-        // Filter tambahan
-        const matchProv = filterProvinsi ? (item.provinsi && item.provinsi.toLowerCase().includes(filterProvinsi.toLowerCase())) : true;
-        const matchKab = filterKab ? (item.kabupaten && item.kabupaten.toLowerCase().includes(filterKab.toLowerCase())) : true;
-        const matchTahun = filterTahun ? (item.tahun && item.tahun.toString().includes(filterTahun)) : true;
+        return ahsList.filter(item => {
+            const matchSearch =
+                (item.ahs && item.ahs.toString().toLowerCase().includes(term)) ||
+                (item.deskripsi && item.deskripsi.toLowerCase().includes(term));
+            const matchProv = provTerm ? item.provinsi?.toLowerCase().includes(provTerm) : true;
+            const matchKab = kabTerm ? item.kab?.toLowerCase().includes(kabTerm) : true;
+            const matchTahun = tahunTerm ? item.tahun?.toString().includes(tahunTerm) : true;
 
-        return matchSearch && matchProv && matchKab && matchTahun;
-    });
+            return matchSearch && matchProv && matchKab && matchTahun;
+        });
+    }, [ahsList, search, filterProvinsi, filterKab, filterTahun]);
+
 
     return (
         <div className="vendor-container">
@@ -256,50 +538,187 @@ const Ahs = ({ dataAhsFromApp, onDeleteAhs }) => {
             <div className="vendor-main">
                 <Header />
 
-                {/* --- Topbar Filter & Actions --- */}
+                {/* ======================= START TOPBAR INTEGRASI ======================= */}
                 <div className="topbar-container">
                     <div className="topbar-left">
                         <div className="input-wrapper">
                             <span className="icon-search">🔍</span>
                             <input
                                 type="text"
-                                // Update placeholder text
                                 placeholder="Cari "
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
                         </div>
-                        <input type="text" placeholder="Provinsi" value={filterProvinsi} onChange={(e) => setFilterProvinsi(e.target.value)} />
-                        <input type="text" placeholder="Kabupaten" value={filterKab} onChange={(e) => setFilterKab(e.target.value)} />
-                        <input type="text" placeholder="Tahun" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)} className="input-tahun" />
-                    </div>
+                        <div className="filter-wrapper">
+                            <input
+                                placeholder="Provinsi"
+                                value={filterProvinsi}
+                                onChange={(e) => {
+                                    setFilterProvinsi(e.target.value);
+                                    setShowProvDD(true);
+                                }}
+                                onFocus={() => setShowProvDD(true)}
+                                onBlur={() => setTimeout(() => setShowProvDD(false), 150)}
+                            />
 
-                    <div className="topbar-right">
-                        <button className="btn-action btn-export" onClick={() => alert("Fitur Export belum aktif")}>📥 Export</button>
-
-                        <div className="dropdown" style={{ position: 'relative', display: 'inline-block' }}>
-                            <button className="btn-action btn-import" onClick={() => setShowDropdown(!showDropdown)}>📥 Import ▼</button>
-                            {showDropdown && (
-                                <div className="dropdown-menu">
-                                    <button onClick={() => alert("Download Template")}>📄 Unduh Template</button>
-                                    <button onClick={() => alert("Upload File")}>📂 Pilih File</button>
+                            {showProvDD && (
+                                <div className="filter-dropdown">
+                                    {provinsiOptions
+                                        .filter(p =>
+                                            p.toLowerCase().includes(filterProvinsi.toLowerCase())
+                                        )
+                                        .map((p, i) => (
+                                            <div
+                                                key={i}
+                                                className="filter-item"
+                                                onMouseDown={() => {
+                                                    setFilterProvinsi(p);
+                                                    setShowProvDD(false);
+                                                }}
+                                            >
+                                                {p}
+                                            </div>
+                                        ))}
                                 </div>
                             )}
                         </div>
 
-                        <button className="btn-action btn-new" onClick={handleNavigateAdd}>+ Baru</button>
+                        <div className="filter-wrapper">
+                            <input
+                                placeholder="Kab"
+                                value={filterKab}
+                                onChange={(e) => {
+                                    setFilterKab(e.target.value);
+                                    setShowKabDD(true);
+                                }}
+                                onFocus={() => setShowKabDD(true)}
+                                onBlur={() => setTimeout(() => setShowKabDD(false), 150)}
+                            />
+
+                            {showKabDD && (
+                                <div className="filter-dropdown">
+                                    {kabOptions
+                                        .filter(k =>
+                                            k.toLowerCase().includes(filterKab.toLowerCase())
+                                        )
+                                        .map((k, i) => (
+                                            <div
+                                                key={i}
+                                                className="filter-item"
+                                                onMouseDown={() => {
+                                                    setFilterKab(k);
+                                                    setShowKabDD(false);
+                                                }}
+                                            >
+                                                {k}
+                                            </div>
+                                        ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="filter-wrapper">
+                            <input
+                                placeholder="Tahun"
+                                value={filterTahun}
+                                onChange={(e) => {
+                                    setFilterTahun(e.target.value);
+                                    setShowTahunDD(true);
+                                }}
+                                onFocus={() => setShowTahunDD(true)}
+                                onBlur={() => setTimeout(() => setShowTahunDD(false), 150)}
+                                className="input-tahun"
+                            />
+
+                            {showTahunDD && (
+                                <div className="filter-dropdown">
+                                    {tahunOptions
+                                        .filter(t => t.toString().includes(filterTahun))
+                                        .map((t, i) => (
+                                            <div
+                                                key={i}
+                                                className="filter-item"
+                                                onMouseDown={() => {
+                                                    setFilterTahun(t);
+                                                    setShowTahunDD(false);
+                                                }}
+                                            >
+                                                {t}
+                                            </div>
+                                        ))}
+                                </div>
+                            )}
+                        </div>
+
+                    </div>
+
+                    <div className="topbar-right">
+                        {/* Tombol EKSPOR (Langsung Unduh) */}
+                        <button
+                            className="btn-action btn-export"
+                            onClick={handleExport}
+                        >
+                            📤 Export
+                        </button>
+
+                        {/* Dropdown IMPOR */}
+                        <div className="dropdown" style={{ position: 'relative' }}>
+                            <button
+                                className="btn-action btn-import"
+                                onClick={() => setShowDropdown(!showDropdown)}
+                            >
+                                📥 Import ▼
+                            </button>
+                            {showDropdown && (
+                                <div className="dropdown-menu">
+                                    <button onClick={handleDownloadTemplate}>
+                                        📄 Unduh Template
+                                    </button>
+                                    <button onClick={handleSelectFile}>
+                                        📂 Pilih File
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Tombol + Baru */}
+                        <button className="btn-action btn-new" onClick={handleNavigateAdd}>
+                            + Baru
+                        </button>
+
+                        {/* Input File Tersembunyi untuk Import */}
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            style={{ display: 'none' }}
+                            onChange={handleFileChange}
+                            accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                        />
                     </div>
                 </div>
+                {/* ======================= END TOPBAR INTEGRASI ======================= */}
 
-                {/* --- TABLE SECTION --- */}
+
                 <div className="vendor-content">
-                    <AhsListTable
-                        data={filteredList}
-                        selectedId={selectedId}
-                        onSelect={setSelectedId}
-                        onEdit={handleNavigateEdit}
-                        onDelete={handleDelete}
-                    />
+                    {loading && <p style={{ textAlign: 'center', padding: '20px' }}>Memuat data AHS...</p>}
+                    {error && <p style={{ textAlign: 'center', padding: '20px', color: 'red' }}>⚠️ {error}</p>}
+
+                    {!loading && !error && (
+                        <AhsListTable
+                            data={filteredList}
+                            selectedId={selectedId}
+                            onSelect={setSelectedId}
+                            onEdit={handleNavigateEdit}
+                            onDelete={handleDelete}
+                        />
+                    )}
+
+                    {!loading && !error && filteredList.length === 0 && (
+                        <div className="no-data-message" style={{ textAlign: 'center', padding: '20px', backgroundColor: '#fff', border: '1px solid #ddd' }}>
+                            Tidak ada data AHS yang cocok dengan kriteria pencarian/filter.
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

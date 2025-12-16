@@ -1,32 +1,67 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Notification from "../components/Notification";
 import ItemSelector from "../components/ItemSelector";
 import { FaArrowLeft } from "react-icons/fa";
 import "../styles/AddAHS.css";
 
+// URL API Anda
+const API_URL = "http://127.0.0.1:8000/api/ahs";
+// URL API Vendor
+const VENDOR_API_URL = "http://127.0.0.1:8000/api/vendors";
+
+// Fungsi pembantu untuk mengkonversi objek JavaScript ke FormData
+const buildFormData = (formData, data, parentKey) => {
+    if (data && typeof data === 'object' && !(data instanceof Date) && !(data instanceof File)) {
+        if (Array.isArray(data)) {
+            data.forEach((element, index) => {
+                if (element instanceof File) {
+                    // Untuk array file/blob, append langsung tanpa indeks: key[]
+                    formData.append(parentKey, element, element.name);
+                } else {
+                    // Untuk array objek (misal items), gunakan indeks: items[0][item_id]
+                    buildFormData(formData, element, `${parentKey}[${index}]`);
+                }
+            });
+        } else {
+            Object.keys(data).forEach(key => {
+                buildFormData(formData, data[key], parentKey ? `${parentKey}[${key}]` : key);
+            });
+        }
+    } else if (data !== undefined && data !== null) {
+        const value = data instanceof File ? data : String(data);
+        formData.append(parentKey, value);
+    }
+}
+
+// Komponen Utama
 const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
     const { id } = useParams();
     const isEditMode = Boolean(id);
     const navigate = useNavigate();
 
-    // --- DEBUGGING: Cek data yang diterima ---
-    // console.log("Mode Edit:", isEditMode);
-    // console.log("ID dari URL:", id);
-    // console.log("Data AHS Global:", allAhsData);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState(null);
+
+    // State Vendor dan Autocomplete
+    const [allVendors, setAllVendors] = useState([]);
+    const [isVendorsLoading, setIsVendorsLoading] = useState(false);
+    const [filteredVendors, setFilteredVendors] = useState([]);
+    const [isVendorSuggestionOpen, setIsVendorSuggestionOpen] = useState(false);
+    const [selectedVendorId, setSelectedVendorId] = useState(null);
 
     const [formData, setFormData] = useState({
         ahs: "",
         deskripsi: "",
-        satuan: "m3",
+        satuan: "",
         provinsi: "",
         kab: "",
         tahun: new Date().getFullYear().toString(),
         merek: "",
         vendor: "",
-        foto: null,
+        foto: [], // Array untuk menyimpan multiple file
         deskripsiProduk: "",
-        spesifikasiFile: null,
+        spesifikasiFile: [], // Array untuk menyimpan multiple file
         spesifikasiTeks: "",
     });
 
@@ -35,7 +70,83 @@ const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
     const [selectedItemToAdd, setSelectedItemToAdd] = useState(null);
     const [currentItemVolume, setCurrentItemVolume] = useState(1);
 
-    // 1. Generate ID Otomatis jika Mode Tambah
+    // State untuk nama file yang sudah ada (mode edit)
+    const [existingFotoNames, setExistingFotoNames] = useState([]);
+    const [existingSpesifikasiFileNames, setExistingSpesifikasiFileNames] = useState([]);
+
+    const vendorInputRef = useRef(null);
+
+    // === SATUAN AUTOCOMPLETE ===
+    const [satuanList, setSatuanList] = useState([]);
+    const [filteredSatuan, setFilteredSatuan] = useState([]);
+    const [isSatuanOpen, setIsSatuanOpen] = useState(false);
+    const satuanInputRef = useRef(null);
+
+
+
+    // --- 1. Fetch Data Vendor dan Setup Listener ---
+    useEffect(() => {
+        const fetchVendors = async () => {
+            setIsVendorsLoading(true);
+            try {
+                const response = await fetch(VENDOR_API_URL);
+                if (!response.ok) {
+                    throw new Error(`Gagal mengambil data vendor: ${response.status}`);
+                }
+                const data = await response.json();
+                setAllVendors(data.data || data);
+            } catch (err) {
+                console.error("Error fetching vendors:", err);
+                setError(`Gagal memuat daftar vendor: ${err.message}`);
+            } finally {
+                setIsVendorsLoading(false);
+            }
+        };
+        fetchVendors();
+
+        const handleClickOutside = (event) => {
+            if (vendorInputRef.current && !vendorInputRef.current.contains(event.target)) {
+                setIsVendorSuggestionOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, []);
+
+    useEffect(() => {
+        const satuanSet = new Set();
+
+        // dari AHS
+        if (allAhsData && allAhsData.length > 0) {
+            allAhsData.forEach(a => {
+                if (a.satuan) satuanSet.add(a.satuan);
+            });
+        }
+
+        // dari item penyusun
+        if (allItemList && allItemList.length > 0) {
+            allItemList.forEach(i => {
+                if (i.satuan) satuanSet.add(i.satuan);
+            });
+        }
+
+        setSatuanList([...satuanSet]);
+    }, [allAhsData, allItemList]);
+
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (satuanInputRef.current && !satuanInputRef.current.contains(e.target)) {
+                setIsSatuanOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+
+    // --- 2. Load Data atau Generate ID ---
     useEffect(() => {
         if (!isEditMode) {
             const generateAHSId = () => {
@@ -46,28 +157,31 @@ const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
         }
     }, [isEditMode]);
 
-    // 2. Load Data jika Mode Edit
     useEffect(() => {
-        // Pastikan allAhsData ada isinya sebelum mencari
         if (isEditMode && allAhsData && allAhsData.length > 0) {
-
-            // Cari data (Gunakan String() untuk keamanan tipe data)
             const dataToEdit = allAhsData.find((item) => String(item.id) === String(id));
 
             if (dataToEdit) {
-                console.log("Data ditemukan untuk Edit:", dataToEdit); // Debugging
-
-                // Logika Penanganan Vendor yang Aman
                 let vendorName = "";
+                let vendorId = null;
                 if (dataToEdit.vendor) {
                     if (typeof dataToEdit.vendor === 'object') {
                         vendorName = dataToEdit.vendor.vendor_name || dataToEdit.vendor.nama || "";
+                        vendorId = dataToEdit.vendor.id || null;
                     } else {
-                        vendorName = dataToEdit.vendor;
+                        vendorName = String(dataToEdit.vendor);
+                        vendorId = isNaN(Number(vendorName)) ? null : Number(vendorName);
                     }
                 }
 
-                setFormData({
+                const fotos = Array.isArray(dataToEdit.produk_foto) ? dataToEdit.produk_foto : (dataToEdit.produk_foto ? [dataToEdit.produk_foto] : []);
+                const docs = Array.isArray(dataToEdit.produk_dokumen) ? dataToEdit.produk_dokumen : (dataToEdit.produk_dokumen ? [dataToEdit.produk_dokumen] : []);
+
+                setExistingFotoNames(fotos.map(f => f.split(/[/\\]/).pop()));
+                setExistingSpesifikasiFileNames(docs.map(d => d.split(/[/\\]/).pop()));
+
+                setFormData(prev => ({
+                    ...prev,
                     ahs: dataToEdit.ahs_no || dataToEdit.ahs || `AHS-${dataToEdit.id}`,
                     deskripsi: dataToEdit.deskripsi || "",
                     satuan: dataToEdit.satuan || "m3",
@@ -76,330 +190,469 @@ const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
                     tahun: dataToEdit.tahun || "",
                     merek: dataToEdit.merek || "",
                     vendor: vendorName,
-                    foto: dataToEdit.produk_foto || dataToEdit.foto || null,
+                    foto: [],
                     deskripsiProduk: dataToEdit.produk_deskripsi || dataToEdit.deskripsiProduk || "",
-                    spesifikasiFile: dataToEdit.produk_dokumen || dataToEdit.spesifikasiFile || null,
+                    spesifikasiFile: [],
                     spesifikasiTeks: dataToEdit.spesifikasi || dataToEdit.spesifikasiTeks || "",
-                });
+                }));
+                setSelectedVendorId(vendorId);
 
-                // Mapping Items dengan Safety Check
                 const loadedItems = (dataToEdit.items || []).map(i => ({
                     itemId: i.item_id || i.itemId || "UNKNOWN",
-                    uraian: i.uraian || "Item Tanpa Nama",
+                    displayId: i.item_no || i.displayId || i.ahs_no || i.item_id || "UNKNOWN",
+                    uraian: i.uraian || i.deskripsi || "Item Tanpa Nama",
                     satuan: i.satuan || "-",
                     volume: i.volume || 0,
                     hpp: i.hpp || 0
                 }));
                 setItems(loadedItems);
-            } else {
-                console.warn(`Data AHS dengan ID ${id} tidak ditemukan di allAhsData.`);
             }
         }
-    }, [isEditMode, id, allAhsData]);
+    }, [isEditMode, id, allAhsData, allVendors]);
 
+    // --- 3. Fungsi Handler ---
+
+    // Autocomplete Vendor
+    const handleVendorSearch = (e) => {
+        const value = e.target.value;
+        setFormData({ ...formData, vendor: value });
+        setSelectedVendorId(null);
+        if (value.length > 0) {
+            const lowerCaseValue = value.toLowerCase();
+            const filtered = allVendors.filter(vendor => {
+                const name = vendor.vendor_name || vendor.nama || '';
+                return name.toLowerCase().includes(lowerCaseValue);
+            });
+            setFilteredVendors(filtered);
+            setIsVendorSuggestionOpen(filtered.length > 0);
+        } else {
+            setFilteredVendors([]);
+            setIsVendorSuggestionOpen(false);
+        }
+    };
+
+    const handleVendorSelect = (vendor) => {
+        const vendorName = vendor.vendor_name || vendor.nama || vendor.id;
+        setFormData({ ...formData, vendor: vendorName });
+        setSelectedVendorId(vendor.id);
+        setIsVendorSuggestionOpen(false);
+    };
+
+    // Hapus File dari state (sebelum disimpan)
+    const handleRemoveFile = (fileName, fieldName) => {
+        setFormData(prev => ({
+            ...prev,
+            [fieldName]: prev[fieldName].filter(file => file.name !== fileName)
+        }));
+    };
+
+    // Perubahan Input (TERMASUK FILE UPLOAD BERTAHAP)
     const handleChange = (e) => {
         const { name, value, files } = e.target;
-        if (name === "foto" || name === "spesifikasiFile") {
-            setFormData({ ...formData, [name]: files[0] });
+
+        if (name === "foto") {
+            const newFiles = Array.from(files);
+            setFormData(prev => ({
+                ...prev,
+                [name]: [...prev.foto, ...newFiles] // Menggabungkan file lama dan baru
+            }));
+            setExistingFotoNames([]);
+            e.target.value = ''; // Reset input file
+        } else if (name === "spesifikasiFile") {
+            const newFiles = Array.from(files);
+            setFormData(prev => ({
+                ...prev,
+                [name]: [...prev.spesifikasiFile, ...newFiles] // Menggabungkan file lama dan baru
+            }));
+            setExistingSpesifikasiFileNames([]);
+            e.target.value = ''; // Reset input file
         } else {
             setFormData({ ...formData, [name]: value });
         }
     };
 
-    const handleItemSelect = (item) => {
-        setSelectedItemToAdd(item);
-    };
-
-const handleAddItem = () => {
-        if (!selectedItemToAdd || !currentItemVolume) {
-            alert("Silakan pilih item dan isi volumenya.");
+    // Item AHS
+    const handleItemSelect = (item) => { setSelectedItemToAdd(item); };
+    const handleAddItem = () => {
+        if (!selectedItemToAdd || !currentItemVolume || Number(currentItemVolume) <= 0) {
+            alert("Silakan pilih item/AHS lain dan isi volume yang valid (> 0).");
             return;
         }
-
-        // Cek duplikasi
-        const checkId = selectedItemToAdd.kode || selectedItemToAdd.id || selectedItemToAdd.item_id;
-        const isDuplicate = items.some((item) => item.itemId === checkId);
+        const checkId = selectedItemToAdd.id;
+        const isDuplicate = items.some((item) => String(item.itemId) === String(checkId));
 
         if (isDuplicate) {
-            alert("Item ini sudah ada di daftar.");
+            alert("Item ini sudah ada di daftar AHS saat ini. Anda dapat mengedit volumenya di tabel.");
             return;
         }
-
         const itemToSave = {
-            // ID Asli (Integer) untuk dikirim ke Database/Backend
-            itemId: selectedItemToAdd.id, 
-            
-            // === [TAMBAHAN] ID Tampilan untuk Tabel (ambil dari UniversalSelector) ===
-            displayId: selectedItemToAdd.displayId || selectedItemToAdd.item_no || selectedItemToAdd.id,
-
-            // Ambil data lainnya
-            uraian: selectedItemToAdd.displayName || selectedItemToAdd.uraian,
+            itemId: selectedItemToAdd.id,
+            displayId: selectedItemToAdd.displayId || selectedItemToAdd.item_no || selectedItemToAdd.ahs_no || selectedItemToAdd.id,
+            uraian: selectedItemToAdd.displayName || selectedItemToAdd.uraian || selectedItemToAdd.deskripsi,
             satuan: selectedItemToAdd.displayUnit || selectedItemToAdd.satuan,
             volume: Number(currentItemVolume),
             hpp: Number(selectedItemToAdd.displayPrice || selectedItemToAdd.hpp || 0),
         };
-
         setItems((prevItems) => [...prevItems, itemToSave]);
         setSelectedItemToAdd(null);
         setCurrentItemVolume(1);
     };
-
     const handleRemoveItem = (itemId) => {
         if (window.confirm("Yakin ingin menghapus item ini dari AHS?")) {
-            setItems((prev) => prev.filter((item) => item.itemId !== itemId));
+            setItems((prev) => prev.filter((item) => String(item.itemId) !== String(itemId)));
+        }
+    };
+
+    // === SATUAN AUTOCOMPLETE HANDLER ===
+    const handleSatuanChange = (e) => {
+        const value = e.target.value;
+
+        setFormData(prev => ({ ...prev, satuan: value }));
+
+        if (!value) {
+            setFilteredSatuan([]);
+            setIsSatuanOpen(false);
+            return;
+        }
+
+        const filtered = satuanList.filter(s =>
+            s.toLowerCase().includes(value.toLowerCase())
+        );
+
+        setFilteredSatuan(filtered);
+        setIsSatuanOpen(filtered.length > 0);
+    };
+
+    const handleSelectSatuan = (value) => {
+        setFormData(prev => ({ ...prev, satuan: value }));
+        setIsSatuanOpen(false);
+    };
+
+
+    // Simpan Data
+    const confirmSave = async () => {
+        setShowNotification(false);
+        setIsLoading(true);
+        setError(null);
+
+        const calculatedTotal = items.reduce((sum, item) => sum + (item.volume * item.hpp), 0);
+        const itemsPayload = items.map(i => ({
+            item_id: i.itemId, uraian: i.uraian, satuan: i.satuan, volume: Number(i.volume), hpp: Number(i.hpp)
+        }));
+        const finalVendorValue = selectedVendorId || formData.vendor;
+
+        const ahsDataToSubmit = {
+            ...(isEditMode && { id: Number(id) }), ahs_no: formData.ahs, deskripsi: formData.deskripsi,
+            satuan: formData.satuan, hpp: calculatedTotal, provinsi: formData.provinsi, kab: formData.kab,
+            tahun: formData.tahun, merek: formData.merek, vendor: finalVendorValue,
+            produk_foto: formData.foto, produk_deskripsi: formData.deskripsiProduk,
+            produk_dokumen: formData.spesifikasiFile, spesifikasi: formData.spesifikasiTeks,
+            items: itemsPayload, _method: isEditMode ? 'PUT' : 'POST',
+        };
+
+        const formPayload = new FormData();
+        buildFormData(formPayload, ahsDataToSubmit);
+
+        let url = isEditMode ? `${API_URL}/${id}` : API_URL;
+        let method = 'POST';
+
+        try {
+            const response = await fetch(url, { method: method, body: formPayload });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || JSON.stringify(errorData.errors) || `Gagal menyimpan data: ${response.status}`);
+            }
+
+            const result = await response.json();
+            const finalData = { id: result.id || Number(id) || Date.now(), ...ahsDataToSubmit, hpp: calculatedTotal, items: itemsPayload };
+
+            if (isEditMode) { onEditSubmit(finalData); } else { onAddSubmit(finalData); }
+            navigate("/ahs");
+        } catch (err) {
+            console.error("Error saat menyimpan data AHS:", err);
+            setError(err.message || "Terjadi kesalahan saat koneksi ke API.");
+            alert("Error: " + (err.message || "Terjadi kesalahan saat menyimpan data."));
+        } finally {
+            setIsLoading(false);
         }
     };
 
     const handleSave = () => {
-        if (!formData.deskripsi) {
-            alert("Deskripsi pekerjaan wajib diisi!");
-            return;
-        }
+        if (!formData.deskripsi) { alert("Deskripsi pekerjaan wajib diisi!"); return; }
+        if (items.length === 0) { alert("AHS harus memiliki minimal satu rincian item!"); return; }
         setShowNotification(true);
     };
 
-    const confirmSave = () => {
-        setShowNotification(false);
-
-        // Hitung total saat save
-        const calculatedTotal = items.reduce((sum, item) => sum + (item.volume * item.hpp), 0);
-
-        const ahsDataToSubmit = {
-            id: isEditMode ? Number(id) : Date.now(),
-            ahs_no: formData.ahs,
-            deskripsi: formData.deskripsi,
-            satuan: formData.satuan,
-            hpp: calculatedTotal,
-            provinsi: formData.provinsi,
-            kab: formData.kab,
-            tahun: formData.tahun,
-            merek: formData.merek,
-            vendor: { vendor_name: formData.vendor },
-
-            // Mapping Items agar sesuai struktur Database/App
-            items: items.map(i => ({
-                item_id: i.itemId,
-                uraian: i.uraian,
-                satuan: i.satuan,
-                volume: Number(i.volume),
-                hpp: Number(i.hpp)
-            })),
-
-            produk_foto: formData.foto,
-            produk_deskripsi: formData.deskripsiProduk,
-            produk_dokumen: formData.spesifikasiFile,
-            spesifikasi: formData.spesifikasiTeks,
-
-            // Simpan field legacy agar kompatibel
-            foto: formData.foto,
-            deskripsiProduk: formData.deskripsiProduk,
-            spesifikasiFile: formData.spesifikasiFile,
-            spesifikasiTeks: formData.spesifikasiTeks,
-        };
-
-        if (isEditMode) {
-            onEditSubmit(ahsDataToSubmit);
-        } else {
-            onAddSubmit(ahsDataToSubmit);
-        }
-        navigate("/ahs");
-    };
-
-    // Style Helper
+    // --- 4. Helper Styles (CSS Inline) ---
     const inputWrapperStyle = { marginBottom: '15px', width: '100%' };
     const labelStyle = { display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px', color: '#333' };
-    const inputStyle = {
-        width: '100%', padding: '10px', borderRadius: '5px',
-        border: '1px solid #ccc', boxSizing: 'border-box', fontSize: '14px'
+    const gridStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' };
+    const flexContainerStyle = { display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' };
+    const itemSelectorGroupStyle = { display: 'flex', gap: '10px', alignItems: 'flex-end', marginBottom: '20px' };
+    const vendorInputGroupStyle = { position: 'relative', width: '100%' };
+
+    // Style untuk Autocomplete
+    const suggestionListStyle = {
+        position: 'absolute', zIndex: 10, backgroundColor: '#fff', border: '1px solid #ddd',
+        maxHeight: '200px', overflowY: 'auto', width: '100%', listStyle: 'none', padding: 0, margin: 0, boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
     };
+    const suggestionItemStyle = { padding: '10px', cursor: 'pointer', borderBottom: '1px solid #eee' };
+    const suggestionItemHoverStyle = { backgroundColor: '#f0f0f0' };
+
+    // Style Baru untuk File Input Box
+    const fileBoxStyle = {
+        border: '1px dashed #ccc', padding: '15px', borderRadius: '8px', backgroundColor: '#f9f9f9',
+        minHeight: '80px', display: 'flex', flexDirection: 'column',
+    };
+    const fileChipContainerStyle = { display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' };
+    const fileChipStyle = {
+        backgroundColor: '#e0f7fa', border: '1px solid #b2ebf2', borderRadius: '4px',
+        padding: '5px 10px', fontSize: '13px', display: 'flex', alignItems: 'center',
+        color: '#006064', fontWeight: '500',
+    };
+    const removeButtonStyle = {
+        background: 'none', border: 'none', color: '#006064', cursor: 'pointer', marginLeft: '5px',
+        fontWeight: 'bold', fontSize: '14px', lineHeight: '1', padding: 0,
+    };
+    const browseButtonStyle = {
+        backgroundColor: '#3498db', color: 'white', padding: '8px 15px', borderRadius: '5px',
+        cursor: 'pointer', display: 'inline-block', marginTop: '5px', fontSize: '14px',
+        fontWeight: 'bold', textAlign: 'center', alignSelf: 'flex-start'
+    };
+
+
+    // --- 5. Return JSX ---
     return (
         <div className="add-ahs-content">
             {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
-                <button onClick={() => navigate('/ahs')} style={{ border: 'none', background: 'none', cursor: 'pointer' }}>
+            <div style={flexContainerStyle}>
+                <button onClick={() => navigate('/ahs')} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
                     <FaArrowLeft size={20} color="#333" />
                 </button>
                 <h2 style={{ margin: 0 }}>{isEditMode ? "Edit Data AHS" : "Tambah Data AHS"}</h2>
             </div>
 
+            {/* Error Message */}
+            {(error || isVendorsLoading) && (
+                <div style={{ color: error ? 'white' : '#333', backgroundColor: error ? '#e74c3c' : '#f0f0f0', padding: '10px', borderRadius: '5px', marginBottom: '20px', fontWeight: 'bold' }}>
+                    {isVendorsLoading ? 'Memuat daftar vendor...' : `Error: ${error}`}
+                </div>
+            )}
+
             <form className="ahs-form">
-                {/* Form Inputs */}
-                <div style={inputWrapperStyle}>
-                    <label>ID</label>
-                    <input type="text" name="ahs" value={formData.ahs} readOnly style={{ backgroundColor: "#f5f5f5", width: '100%' }} />
+                {/* ID & Deskripsi Utama */}
+                <div style={inputWrapperStyle}><label style={labelStyle}>ID AHS</label>
+                    <input type="text" name="ahs" value={formData.ahs} readOnly style={{ backgroundColor: "#f5f5f5", ...inputWrapperStyle }} />
+                </div>
+                <div style={inputWrapperStyle}><label style={labelStyle}>Deskripsi Pekerjaan *</label>
+                    <input type="text" name="deskripsi" value={formData.deskripsi} onChange={handleChange} required style={{ ...inputWrapperStyle }} />
                 </div>
 
-                <div style={inputWrapperStyle}>
-                    <label>Deskripsi Pekerjaan</label>
-                    <input type="text" name="deskripsi" value={formData.deskripsi} onChange={handleChange} style={{ width: '100%' }} />
+                {/* Satuan, Tahun, Provinsi, Kab */}
+                <div style={gridStyle}>
+                    <div style={inputWrapperStyle} ref={satuanInputRef}>
+                        <label style={labelStyle}>Satuan</label>
+
+                        <input
+                            type="text"
+                            value={formData.satuan}
+                            onChange={handleSatuanChange}
+                            onFocus={() => filteredSatuan.length > 0 && setIsSatuanOpen(true)}
+                            placeholder="Contoh: m2, m3, bh, ls"
+                            style={{ width: '100%', padding: '10px', height: '42px', boxSizing: 'border-box' }}
+                        />
+
+                        {isSatuanOpen && filteredSatuan.length > 0 && (
+                            <ul style={suggestionListStyle}>
+                                {filteredSatuan.map((s, idx) => (
+                                    <li
+                                        key={idx}
+                                        onClick={() => handleSelectSatuan(s)}
+                                        style={suggestionItemStyle}
+                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = suggestionItemHoverStyle.backgroundColor}
+                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    >
+                                        {s}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+
+                    <div style={inputWrapperStyle}><label style={labelStyle}>Tahun</label>
+                        <input type="text" name="tahun" value={formData.tahun} onChange={handleChange} style={{ ...inputWrapperStyle }} />
+                    </div>
+                </div>
+                <div style={gridStyle}>
+                    <div style={inputWrapperStyle}><label style={labelStyle}>Provinsi</label>
+                        <input type="text" name="provinsi" value={formData.provinsi} onChange={handleChange} style={{ ...inputWrapperStyle }} />
+                    </div>
+                    <div style={inputWrapperStyle}><label style={labelStyle}>Kabupaten</label>
+                        <input type="text" name="kab" value={formData.kab} onChange={handleChange} style={{ ...inputWrapperStyle }} />
+                    </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                    <div style={inputWrapperStyle}>
-                        <label>Satuan</label>
-                        <input type="text" name="satuan" value={formData.satuan} onChange={handleChange} style={{ width: '100%' }} />
+                {/* Merek & Vendor (Autocomplete) */}
+                <div style={gridStyle}>
+                    <div style={inputWrapperStyle}><label style={labelStyle}>Merek</label>
+                        <input type="text" name="merek" value={formData.merek} onChange={handleChange} style={{ ...inputWrapperStyle }} />
                     </div>
-                    <div style={inputWrapperStyle}>
-                        <label>Tahun</label>
-                        <input type="text" name="tahun" value={formData.tahun} onChange={handleChange} style={{ width: '100%' }} />
-                    </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                    <div style={inputWrapperStyle}>
-                        <label>Provinsi</label>
-                        <input type="text" name="provinsi" value={formData.provinsi} onChange={handleChange} style={{ width: '100%' }} />
-                    </div>
-                    <div style={inputWrapperStyle}>
-                        <label>Kab</label>
-                        <input type="text" name="kab" value={formData.kab} onChange={handleChange} style={{ width: '100%' }} />
-                    </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                    <div style={inputWrapperStyle}>
-                        <label>Merek</label>
-                        <input type="text" name="merek" value={formData.merek} onChange={handleChange} style={{ width: '100%' }} />
-                    </div>
-                    <div style={inputWrapperStyle}>
-                        <label>Vendor</label>
-                        <input type="text" name="vendor" value={formData.vendor} onChange={handleChange} style={{ width: '100%' }} />
+                    <div style={inputWrapperStyle}><label style={labelStyle}>Vendor</label>
+                        <div style={vendorInputGroupStyle} ref={vendorInputRef}>
+                            <input type="text" name="vendor" value={formData.vendor} onChange={handleVendorSearch} placeholder="Ketik nama vendor (PT/CV/nama)"
+                                onFocus={() => formData.vendor.length > 0 && filteredVendors.length > 0 && setIsVendorSuggestionOpen(true)}
+                                style={{ width: '100%', padding: '10px', height: '42px', boxSizing: 'border-box' }} disabled={isVendorsLoading}
+                            />
+                            {isVendorSuggestionOpen && filteredVendors.length > 0 && (
+                                <ul style={suggestionListStyle}>
+                                    {filteredVendors.map((vendor) => (
+                                        <li key={vendor.id} onClick={() => handleVendorSelect(vendor)} style={suggestionItemStyle}
+                                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = suggestionItemHoverStyle.backgroundColor}
+                                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                        >
+                                            {vendor.vendor_name || vendor.nama || `Vendor ID: ${vendor.id}`}
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                            {isVendorsLoading && <small style={{ display: 'block', marginTop: '5px', color: '#888' }}>Memuat daftar...</small>}
+                        </div>
                     </div>
                 </div>
 
                 {/* 1. Deskripsi Produk */}
-                <div style={inputWrapperStyle}>
-                    <label style={labelStyle}>Deskripsi Produk</label>
-                    <input
-                        type="text"
-                        name="deskripsiProduk"
-                        value={formData.deskripsiProduk}
-                        onChange={handleChange}
-                        placeholder="Contoh: Semen Gresik 50kg Tipe 1"
-                        style={inputStyle}
-                    />
+                <div style={inputWrapperStyle}><label style={labelStyle}>Deskripsi Produk</label>
+                    <input type="text" name="deskripsiProduk" value={formData.deskripsiProduk} onChange={handleChange} placeholder="Contoh: Semen Gresik 50kg Tipe 1" style={{ ...inputWrapperStyle }} />
                 </div>
 
+                {/* --- Upload FOTO Produk (Desain Box Chip) --- */}
                 <div style={inputWrapperStyle}>
-                    <label style={labelStyle}>Upload Foto Produk</label>
-                    <input type="file" name="foto" onChange={handleChange} accept="image/*" style={{ ...inputStyle, padding: '7px' }} />
-                    {(formData.foto instanceof File) && <small style={{ display: 'block', marginTop: '5px', color: 'green' }}>File terpilih: {formData.foto.name}</small>}
+                    <label style={labelStyle}>Foto Produk</label>
+                    <div style={fileBoxStyle}>
+                        <label htmlFor="foto-upload" style={browseButtonStyle}>
+                            + Tambah Foto
+                        </label>
+                        <input id="foto-upload" type="file" name="foto" onChange={handleChange} accept="image/*" multiple style={{ display: 'none' }} />
+
+                        {existingFotoNames.length > 0 && (
+                            <div style={{ fontSize: '12px', marginTop: '10px', color: '#555' }}>File Lama: {existingFotoNames.join(', ')}</div>
+                        )}
+
+                        {formData.foto.length > 0 && (
+                            <div style={fileChipContainerStyle}>
+                                {formData.foto.map((file, index) => (
+                                    <span key={index} style={fileChipStyle}>
+                                        {file.name}
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveFile(file.name, 'foto')}
+                                            style={removeButtonStyle}
+                                            title="Hapus file ini"
+                                        >
+                                            &times;
+                                        </button>
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+
+                    </div>
                 </div>
 
-                {/* 2. Spesifikasi (Dokumen & Teks Menyatu) */}
+                {/* --- 2. Spesifikasi (Dokumen Multiple dan Teks) --- */}
                 <div style={inputWrapperStyle}>
                     <label style={labelStyle}>Spesifikasi (Dokumen & Teks)</label>
 
-                    {/* Input File (Bagian Atas) */}
-                    <input
-                        type="file"
-                        name="spesifikasiFile"
-                        onChange={handleChange}
-                        style={{ ...inputStyle, marginBottom: '0', borderBottomLeftRadius: 0, borderBottomRightRadius: 0, borderBottom: '1px solid #eee' }}
-                    />
+                    {/* Input Dokumen (Desain Box Chip) */}
+                    <div style={fileBoxStyle}>
+                        <label htmlFor="dokumen-upload" style={browseButtonStyle}>
+                            + Tambah Dokumen
+                        </label>
+                        <input id="dokumen-upload" type="file" name="spesifikasiFile" onChange={handleChange} accept=".pdf,.doc,.docx,.xls,.xlsx" multiple style={{ display: 'none' }} />
 
-                    {/* Textarea (Bagian Bawah) */}
-                    <textarea
-                        name="spesifikasiTeks"
-                        value={formData.spesifikasiTeks}
-                        onChange={handleChange}
-                        placeholder="Contoh: &#10;• Berat: 50kg&#10;• Standar: SNI"
-                        rows="4"
-                        style={{
-                            ...inputStyle,
-                            borderTopLeftRadius: 0,
-                            borderTopRightRadius: 0,
-                            resize: 'vertical',
-                            minHeight: '80px',
-                            marginTop: '-1px' // Agar border menyatu sempurna
-                        }}
+                        {existingSpesifikasiFileNames.length > 0 && (
+                            <div style={{ fontSize: '12px', marginTop: '10px', color: '#555' }}>Dokumen Lama: {existingSpesifikasiFileNames.join(', ')}</div>
+                        )}
+
+                        {formData.spesifikasiFile.length > 0 && (
+                            <div style={fileChipContainerStyle}>
+                                {formData.spesifikasiFile.map((file, index) => (
+                                    <span key={index} style={fileChipStyle}>
+                                        {file.name}
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveFile(file.name, 'spesifikasiFile')}
+                                            style={removeButtonStyle}
+                                            title="Hapus dokumen ini"
+                                        >
+                                            &times;
+                                        </button>
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Textarea (Teks Spesifikasi) */}
+                    <textarea name="spesifikasiTeks" value={formData.spesifikasiTeks} onChange={handleChange} placeholder="Contoh: &#10;• Berat: 50kg&#10;• Standar: SNI"
+                        rows="4" style={{ width: '100%', padding: '10px', boxSizing: 'border-box', resize: 'vertical', minHeight: '80px', marginTop: '15px' }}
                     ></textarea>
-
-                    {(formData.spesifikasiFile instanceof File) && <small style={{ display: 'block', marginTop: '5px', color: 'green' }}>Dokumen terpilih: {formData.spesifikasiFile.name}</small>}
                 </div>
 
                 <hr style={{ margin: "20px 0", borderTop: "1px solid #eee" }} />
 
-                <h3>Item</h3>
+                <h3>Rincian Item Penyusun AHS</h3>
 
                 {/* Item Selector Section */}
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', marginBottom: '20px' }}>
-                    <div style={{ flex: 3 }}>
-                        <ItemSelector
-                            itemList={allItemList}
-                            // Ubah 'selectedItem' menjadi 'selectedObject' (Sesuai kode Child Component)
-                            selectedObject={selectedItemToAdd}
-                            onSelect={handleItemSelect}
-                        />
+                <div style={itemSelectorGroupStyle}>
+                    <div style={{ flex: 3 }}><label style={labelStyle}>Pilih Item/AHS Lain</label>
+                        <ItemSelector itemList={allItemList} selectedObject={selectedItemToAdd} onSelect={handleItemSelect} />
                     </div>
-                    <div style={{ flex: 1 }}>
-                        <label>Volume</label>
-                        <input
-                            type="number"
-                            value={currentItemVolume}
-                            onChange={(e) => setCurrentItemVolume(e.target.value)}
-                            style={{ width: '100%', padding: '10px', height: '42px', boxSizing: 'border-box' }}
-                        />
+                    <div style={{ flex: 1 }}><label style={labelStyle}>Volume *</label>
+                        <input type="number" value={currentItemVolume} onChange={(e) => setCurrentItemVolume(e.target.value)} style={{ width: '100%', padding: '10px', height: '42px', boxSizing: 'border-box' }} min="0.001" step="any" required />
                     </div>
-                    <button
-                        type="button"
-                        onClick={handleAddItem}
-                        className="btn-save"
-                        style={{ height: '42px', padding: '0 20px' }}
-                    >
+                    <button type="button" onClick={handleAddItem} className="btn-save" style={{ height: '42px', alignSelf: 'flex-end', padding: '0 20px' }} disabled={!selectedItemToAdd || Number(currentItemVolume) <= 0 || isLoading} >
                         + Tambah
                     </button>
                 </div>
 
                 {/* Table Items */}
                 <div className="item-list">
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-                        <thead style={{ backgroundColor: '#f0f0f0' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', border: '1px solid #ddd' }}>
+                        <thead style={{ backgroundColor: '#ecf0f1' }}>
                             <tr>
-                                <th style={{ padding: '8px', width: '100px', textAlign: 'left' }}>ITEM ID</th>
-                                <th style={{ padding: '8px', textAlign: 'left' }}>Uraian</th>
-                                <th style={{ padding: '8px', width: '80px' }}>Satuan</th>
-                                <th style={{ padding: '8px', width: '80px', textAlign: 'center' }}>Vol</th>
-                                <th style={{ padding: '8px', width: '120px', textAlign: 'right' }}>HPP</th>
-                                <th style={{ padding: '8px', width: '120px', textAlign: 'right' }}>Jumlah</th>
-                                <th style={{ padding: '8px', width: '60px', textAlign: 'center' }}>Aksi</th>
+                                <th style={{ padding: '12px 8px', width: '100px', textAlign: 'left', border: '1px solid #ddd' }}>ID</th>
+                                <th style={{ padding: '12px 8px', textAlign: 'left', border: '1px solid #ddd' }}>Uraian</th>
+                                <th style={{ padding: '12px 8px', width: '80px', textAlign: 'center', border: '1px solid #ddd' }}>Satuan</th>
+                                <th style={{ padding: '12px 8px', width: '80px', textAlign: 'center', border: '1px solid #ddd' }}>Vol</th>
+                                <th style={{ padding: '12px 8px', width: '120px', textAlign: 'right', border: '1px solid #ddd' }}>HPP</th>
+                                <th style={{ padding: '12px 8px', width: '120px', textAlign: 'right', border: '1px solid #ddd' }}>Jumlah</th>
+                                <th style={{ padding: '12px 8px', width: '60px', textAlign: 'center', border: '1px solid #ddd' }}>Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
                             {items.length > 0 ? items.map((item, idx) => (
                                 <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
-                                    {/* === [PERUBAHAN] Tampilkan Display ID, kalau tidak ada pakai Item ID biasa === */}
-                                    <td style={{ padding: '8px' }}>{item.displayId || item.itemId}</td>
-
-                                    <td style={{ padding: '8px' }}>{item.uraian}</td>
-                                    <td style={{ padding: '8px' }}>{item.satuan}</td>
-                                    <td style={{ padding: '8px', textAlign: 'center' }}>{item.volume}</td>
-                                    <td style={{ padding: '8px', textAlign: 'right' }}>{item.hpp.toLocaleString('id-ID')}</td>
-                                    <td style={{ padding: '8px', textAlign: 'right' }}>{(item.volume * item.hpp).toLocaleString('id-ID')}</td>
-                                    <td style={{ padding: '8px', textAlign: 'center' }}>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleRemoveItem(item.itemId)}
-                                            style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 'bold' }}
-                                        >
-                                            X
-                                        </button>
+                                    <td style={{ padding: '8px', border: '1px solid #eee' }}>{item.displayId || item.itemId}</td>
+                                    <td style={{ padding: '8px', border: '1px solid #eee' }}>{item.uraian}</td>
+                                    <td style={{ padding: '8px', textAlign: 'center', border: '1px solid #eee' }}>{item.satuan}</td>
+                                    <td style={{ padding: '8px', textAlign: 'center', border: '1px solid #eee' }}>{item.volume.toFixed(3)}</td>
+                                    <td style={{ padding: '8px', textAlign: 'right', border: '1px solid #eee' }}>{item.hpp.toLocaleString('id-ID')}</td>
+                                    <td style={{ padding: '8px', textAlign: 'right', border: '1px solid #eee' }}>{(item.volume * item.hpp).toLocaleString('id-ID')}</td>
+                                    <td style={{ padding: '8px', textAlign: 'center', border: '1px solid #eee' }}>
+                                        <button type="button" onClick={() => handleRemoveItem(item.itemId)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 'bold' }}>X</button>
                                     </td>
                                 </tr>
                             )) : (
                                 <tr>
-                                    <td colSpan="7" style={{ textAlign: 'center', padding: '15px', color: '#888' }}>
-                                        Belum ada rincian item.
-                                    </td>
+                                    <td colSpan="7" style={{ textAlign: 'center', padding: '15px', color: '#888', border: '1px solid #eee' }}>Belum ada rincian item. Tambahkan item atau AHS lain yang akan menjadi komponen.</td>
                                 </tr>
                             )}
                         </tbody>
-                        <tfoot style={{ fontWeight: 'bold', backgroundColor: '#fafafa' }}>
+                        <tfoot style={{ fontWeight: 'bold', backgroundColor: '#f0f3f4' }}>
                             <tr>
-                                <td colSpan="5" style={{ padding: '10px', textAlign: 'right' }}>TOTAL HARGA POKOK:</td>
-                                <td style={{ padding: '10px', textAlign: 'right' }}>
-                                    {items.reduce((sum, i) => sum + (i.volume * i.hpp), 0).toLocaleString('id-ID')}
-                                </td>
+                                <td colSpan="5" style={{ padding: '10px', textAlign: 'right', border: '1px solid #ddd' }}>TOTAL HARGA POKOK:</td>
+                                <td style={{ padding: '10px', textAlign: 'right', border: '1px solid #ddd' }}>{items.reduce((sum, i) => sum + (i.volume * i.hpp), 0).toLocaleString('id-ID')}</td>
                                 <td></td>
                             </tr>
                         </tfoot>
@@ -408,21 +661,15 @@ const handleAddItem = () => {
 
                 {/* Buttons */}
                 <div style={{ marginTop: '30px', display: 'flex', gap: '15px' }}>
-                    <button type="button" className="btn-save" onClick={handleSave} style={{ flex: 1 }}>
-                        {isEditMode ? "Simpan Perubahan" : "Simpan Data Baru"}
+                    <button type="button" onClick={handleSave} className="btn-save" style={{ flex: 1 }} disabled={isLoading || !formData.deskripsi || items.length === 0} >
+                        {isLoading ? (isEditMode ? "Menyimpan..." : "Menambah...") : (isEditMode ? "Simpan Perubahan" : "Simpan Data Baru")}
                     </button>
-                    <button type="button" className="btn-cancel" onClick={() => navigate('/ahs')} style={{ flex: 1 }}>
-                        Batal
-                    </button>
+                    <button type="button" onClick={() => navigate('/ahs')} className="btn-cancel" style={{ flex: 1 }}>Batal</button>
                 </div>
             </form>
 
             {showNotification && (
-                <Notification
-                    message={isEditMode ? "Simpan perubahan data ini?" : "Simpan data baru ini?"}
-                    onConfirm={confirmSave}
-                    onCancel={() => setShowNotification(false)}
-                />
+                <Notification message={isEditMode ? "Simpan perubahan data ini?" : "Simpan data baru ini?"} onConfirm={confirmSave} onCancel={() => setShowNotification(false)} />
             )}
         </div>
     );

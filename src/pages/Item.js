@@ -3,14 +3,20 @@ import axios from "axios";
 import Sidebar from "../components/Sidebar";
 import Header from "../components/header";
 import "./Item.css";
+import { FaTimes } from 'react-icons/fa';
 
 // Base URL API
 const API_BASE_URL = "http://127.0.0.1:8000/api";
 
+// 🔥 KONSTANTA BATAS FILE (contoh: 5MB)
+const MAX_FILE_SIZE_MB = 5;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
 const Item = () => {
     // === 1. STATE & DATA ===
+    const filterRef = useRef(null);
+
     const [items, setItems] = useState([]);
-    // const [vendorData, setVendorData] = useState([]); // Tidak butuh load semua vendor lagi
     const [loading, setLoading] = useState(false);
 
     // State Filter & Search
@@ -19,42 +25,44 @@ const Item = () => {
     const [filterKab, setFilterKab] = useState("");
     const [filterTahun, setFilterTahun] = useState("");
 
+    const [provinsiOptions, setProvinsiOptions] = useState([]);
+    const [kabOptions, setKabOptions] = useState([]);
+    const [tahunOptions, setTahunOptions] = useState([]);
+
+    const [showProvinsiDD, setShowProvinsiDD] = useState(false);
+    const [showKabDD, setShowKabDD] = useState(false);
+    const [showTahunDD, setShowTahunDD] = useState(false);
+
+    // === STATE SATUAN (Autocomplete Lokal) ===
+    const [satuanList, setSatuanList] = useState([]);
+    const [satuanSuggestions, setSatuanSuggestions] = useState([]);
+    const [showSatuanDropdown, setShowSatuanDropdown] = useState(false);
+
     // State Modal & UI
     const [showModal, setShowModal] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [showDetail, setShowDetail] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
     const [showDropdown, setShowDropdown] = useState(false);
+    const [showFotoModal, setShowFotoModal] = useState(false);
+    const [fotoList, setFotoList] = useState([]);
+
+    // 🔥 State Error Validasi File
+    const [fotoError, setFotoError] = useState("");
+    const [docError, setDocError] = useState("");
+
 
     // State Form Data
     const [formData, setFormData] = useState({
-        id: "",
-        item_no: "", // Akan diisi otomatis oleh handleOpenAdd
-        ahs: "",
-        deskripsi: "",
-        merek: "",
-        satuan: "",
-        hpp: "",
-
-        // Vendor Logic
-        vendorName: "",
-        vendor_no: "",
-        vendor_id: "",
-
-        provinsi: "",
-        kabupaten: "",
-        tahun: "",
-        deskripsiProduk: "",
-        teksSpesifikasi: "",
-
-        // File Upload
-        fotoFile: null,
-        docSpecFile: null,
-
-        // Preview URL
-        fotoUrl: "",
-        fileSpesifikasiName: ""
+        id: "", item_no: "", ahs: "", deskripsi: "", merek: "", satuan: "", hpp: "",
+        vendorName: "", vendor_no: "", vendor_id: "",
+        provinsi: "", kab: "", tahun: "", deskripsiProduk: "", teksSpesifikasi: "",
+        fotoFiles: [], docSpecFiles: [],
     });
+
+    // State untuk menyimpan nama file yang sudah ada (mode edit)
+    const [existingFotoNames, setExistingFotoNames] = useState([]);
+    const [existingDocNames, setExistingDocNames] = useState([]);
 
     // Refs
     const fileInputRef = useRef(null);
@@ -64,11 +72,20 @@ const Item = () => {
     const [vendorSuggestions, setVendorSuggestions] = useState([]);
     const [vendorNotFound, setVendorNotFound] = useState(false);
 
-    // Helper untuk menampilkan nama vendor
-    const getVendorName = (v) => {
-        if (!v) return "";
-        return v.vendor_name || v.nama || v.name || v.vendor_no || "";
+    // Helper functions
+    const getVendorName = (v) => v ? (v.vendor_name || v.nama || v.name || v.vendor_no || "") : "";
+    const getFotoList = (foto) => {
+        if (!foto) return [];
+        if (Array.isArray(foto) && typeof foto[0] === 'string') return foto;
+        if (typeof foto === 'string' && foto.includes('/')) return [foto];
+        try {
+            const parsed = JSON.parse(foto);
+            return Array.isArray(parsed) ? parsed : [foto];
+        } catch {
+            return [foto];
+        }
     };
+
 
     // === 2. FETCH DATA ITEMS ===
 
@@ -101,6 +118,56 @@ const Item = () => {
         const handler = setTimeout(() => { fetchItems(); }, 500);
         return () => clearTimeout(handler);
     }, [fetchItems]);
+
+    // === ISI DROPDOWN FILTER DARI DATA ITEMS ===
+    useEffect(() => {
+        if (items.length > 0) {
+            // Provinsi unik
+            const provSet = new Set(
+                items.map(i => i.provinsi).filter(Boolean)
+            );
+            setProvinsiOptions([...provSet]);
+
+            // Kab unik
+            const kabSet = new Set(
+                items.map(i => i.kab).filter(Boolean)
+            );
+            setKabOptions([...kabSet]);
+
+            // Tahun unik (urut desc)
+            const tahunSet = new Set(
+                items.map(i => i.tahun).filter(Boolean)
+            );
+            setTahunOptions([...tahunSet].sort((a, b) => b - a));
+        }
+    }, [items]);
+
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (filterRef.current && !filterRef.current.contains(e.target)) {
+                setShowProvinsiDD(false);
+                setShowKabDD(false);
+                setShowTahunDD(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+
+    useEffect(() => {
+        if (items.length > 0) {
+            const uniqueSatuan = [
+                ...new Set(
+                    items
+                        .map(item => item.satuan)
+                        .filter(s => s && s.trim() !== "")
+                )
+            ];
+            setSatuanList(uniqueSatuan);
+        }
+    }, [items]);
 
 
     // === 3. LOGIC LIVE SEARCH VENDOR ===
@@ -153,33 +220,139 @@ const Item = () => {
     }, []);
 
 
-    // === 4. CRUD HANDLERS ===
+    // === 4. FILE HANDLERS (Multiple File & Chip Display) ===
 
-    // --- [UPDATE] LOGIC TAMBAH DATA DENGAN AUTO ID ---
+    // 🔥 MODIFIKASI: Implementasi VALIDASI TANPA POP-UP (Hanya Teks Merah)
+    const handleFileChange = (e, fieldName) => {
+        const newFiles = Array.from(e.target.files);
+        let validFiles = [];
+        let totalOverSize = 0;
+        let isOverSize = false;
+
+        // Reset error state
+        if (fieldName === 'fotoFiles') setFotoError("");
+        if (fieldName === 'docSpecFiles') setDocError("");
+
+        const currentFiles = formData[fieldName];
+
+        newFiles.forEach(file => {
+            if (file.size > MAX_FILE_SIZE_BYTES) {
+                isOverSize = true;
+                totalOverSize++;
+                // File yang melebihi batas TIDAK dimasukkan ke validFiles
+            } else {
+                // Pastikan nama file baru tidak duplikat dengan yang sudah ada di state
+                const isDuplicate = currentFiles.some(f => f.name === file.name);
+                if (!isDuplicate) {
+                    validFiles.push(file);
+                }
+            }
+        });
+
+        let errorMessage = "";
+        if (isOverSize) {
+            const fileType = fieldName === 'fotoFiles' ? 'Foto' : 'Dokumen Spesifikasi';
+            errorMessage = `⚠️ ${totalOverSize} file ${fileType} melebihi batas maksimal ${MAX_FILE_SIZE_MB}MB dan tidak ditambahkan.`;
+            // Set error state, ini akan menampilkan teks merah di bawah input
+            if (fieldName === 'fotoFiles') setFotoError(errorMessage);
+            if (fieldName === 'docSpecFiles') setDocError(errorMessage);
+        }
+
+        if (validFiles.length > 0) {
+            setFormData(prev => ({
+                ...prev,
+                // Tambahkan file yang valid ke list
+                [fieldName]: [...prev[fieldName], ...validFiles]
+            }));
+
+            // Jika ada upload baru, kosongkan existing file names (asumsi upload baru akan menggantikan/melengkapi)
+            if (fieldName === 'fotoFiles') setExistingFotoNames([]);
+            if (fieldName === 'docSpecFiles') setExistingDocNames([]);
+        }
+
+        e.target.value = null; // Reset input agar file yang sama bisa diupload lagi
+    };
+
+    // Menghapus file yang baru dipilih (belum disimpan ke server)
+    const handleRemoveFile = (fileName, fieldName) => {
+        setFormData(prev => {
+            const updatedFiles = prev[fieldName].filter(file => file.name !== fileName);
+
+            // Clear error jika array file menjadi kosong dan sebelumnya ada error
+            if (fieldName === 'fotoFiles' && fotoError && updatedFiles.length === 0) setFotoError("");
+            if (fieldName === 'docSpecFiles' && docError && updatedFiles.length === 0) setDocError("");
+
+            return {
+                ...prev,
+                [fieldName]: updatedFiles
+            };
+        });
+    };
+
+    // Menghapus file yang sudah ada di server
+    const handleRemoveExistingFile = (fileName, fieldName) => {
+        if (window.confirm(`Yakin ingin menghapus file "${fileName}"? Perubahan akan disimpan saat Anda klik "Simpan Perubahan".`)) {
+            if (fieldName === 'foto') {
+                setExistingFotoNames(prev => prev.filter(name => name !== fileName));
+            } else if (fieldName === 'doc') {
+                setExistingDocNames(prev => prev.filter(name => name !== fileName));
+            }
+        }
+    };
+    // === SATUAN AUTOCOMPLETE HANDLERS ===
+    const handleSatuanChange = (e) => {
+        const value = e.target.value;
+
+        setFormData(prev => ({
+            ...prev,
+            satuan: value
+        }));
+
+        if (!value) {
+            setSatuanSuggestions([]);
+            setShowSatuanDropdown(false);
+            return;
+        }
+
+        const filtered = satuanList.filter(s =>
+            s.toLowerCase().includes(value.toLowerCase())
+        );
+
+        setSatuanSuggestions(filtered);
+        setShowSatuanDropdown(filtered.length > 0);
+    };
+
+    const handleSelectSatuan = (value) => {
+        setFormData(prev => ({
+            ...prev,
+            satuan: value
+        }));
+        setShowSatuanDropdown(false);
+    };
+
+
+    // === 5. CRUD HANDLERS ===
+
     const handleOpenAdd = async () => {
         setIsEditMode(false);
+        setFotoError(""); setDocError(""); // Reset error
 
-        // Reset form dulu
         const initialData = {
-            id: "", item_no: "Loading...", // Placeholder saat loading
-            ahs: "", deskripsi: "", merek: "", satuan: "", hpp: "",
+            id: "", item_no: "Loading...", ahs: "", deskripsi: "", merek: "", satuan: "", hpp: "",
             vendorName: "", vendor_no: "", vendor_id: "",
-            provinsi: "", kabupaten: "",
-            tahun: new Date().getFullYear().toString(),
+            provinsi: "", kab: "", tahun: new Date().getFullYear().toString(),
             deskripsiProduk: "", teksSpesifikasi: "",
-            fotoFile: null, docSpecFile: null, fotoUrl: "", fileSpesifikasiName: ""
+            fotoFiles: [], docSpecFiles: [],
         };
         setFormData(initialData);
+        setExistingFotoNames([]);
+        setExistingDocNames([]);
         setVendorSuggestions([]);
         setShowModal(true);
 
-        // Fetch Next ID dari Backend
         try {
             const response = await axios.get(`${API_BASE_URL}/items/next-id`);
-            setFormData(prev => ({
-                ...prev,
-                item_no: response.data.next_id // Mengisi otomatis ID (misal: M_006)
-            }));
+            setFormData(prev => ({ ...prev, item_no: response.data.next_id }));
         } catch (error) {
             console.error("Gagal mengambil ID otomatis:", error);
             setFormData(prev => ({ ...prev, item_no: "Manual Input" }));
@@ -188,31 +361,24 @@ const Item = () => {
 
     const handleOpenEdit = (item) => {
         setIsEditMode(true);
+        setFotoError(""); setDocError(""); // Reset error
+
         const vName = item.vendor ? getVendorName(item.vendor) : "";
         const vNo = item.vendor ? item.vendor.vendor_no : "";
 
+        const existingFoto = getFotoList(item.produk_foto);
+        const existingDoc = item.produk_dokumen ? [item.produk_dokumen] : [];
+
+        setExistingFotoNames(existingFoto.map(path => path.split(/[/\\]/).pop()));
+        setExistingDocNames(existingDoc.map(path => path.split(/[/\\]/).pop()));
+
         setFormData({
-            id: item.item_id,
-            item_no: item.item_no,
-            ahs: item.ahs,
-            deskripsi: item.deskripsi,
-            merek: item.merek,
-            satuan: item.satuan,
-            hpp: item.hpp,
-
-            vendorName: vName,
-            vendor_id: item.vendor_id,
-            vendor_no: vNo,
-
-            provinsi: item.provinsi,
-            kabupaten: item.kab,
-            tahun: item.tahun,
-            deskripsiProduk: item.produk_deskripsi,
-            teksSpesifikasi: item.spesifikasi,
-
-            fotoUrl: item.produk_foto,
-            fileSpesifikasiName: item.produk_dokumen ? "Lihat Dokumen" : "",
-            fotoFile: null, docSpecFile: null
+            id: item.item_id, item_no: item.item_no, ahs: item.ahs, deskripsi: item.deskripsi,
+            merek: item.merek, satuan: item.satuan, hpp: item.hpp,
+            vendorName: vName, vendor_id: item.vendor_id, vendor_no: vNo,
+            provinsi: item.provinsi, kab: item.kab, tahun: item.tahun,
+            deskripsiProduk: item.produk_deskripsi, teksSpesifikasi: item.spesifikasi,
+            fotoFiles: [], docSpecFiles: []
         });
         setShowModal(true);
     };
@@ -223,21 +389,52 @@ const Item = () => {
             return;
         }
 
+        // 🔥 Hentikan save jika ada error validasi file
+        if (fotoError || docError) {
+            alert("Perhatian: Harap perbaiki atau hapus file yang melebihi batas sebelum menyimpan.");
+            return;
+        }
+
         setLoading(true);
 
         const data = new FormData();
-        // data.append("item_no", formData.item_no); // Tidak perlu dikirim karena Backend generate ulang saat Store
+        data.append("item_no", formData.item_no);
+
         data.append("ahs", formData.ahs || "-");
         data.append("deskripsi", formData.deskripsi || "-");
         data.append("merek", formData.merek || "-");
         data.append("satuan", formData.satuan || "-");
         data.append("hpp", formData.hpp || "0");
         data.append("provinsi", formData.provinsi || "-");
-        data.append("kab", formData.kabupaten || "-");
+        data.append("kab", formData.kab|| "-");
         data.append("tahun", formData.tahun || "");
         data.append("produk_deskripsi", formData.deskripsiProduk || "-");
         data.append("spesifikasi", formData.teksSpesifikasi || "-");
 
+        const handleSatuanChange = (e) => {
+            const value = e.target.value;
+            setFormData({ ...formData, satuan: value });
+
+            if (value.length === 0) {
+                setSatuanSuggestions([]);
+                setShowSatuanDropdown(false);
+                return;
+            }
+
+            const filtered = satuanList.filter(s =>
+                s.toLowerCase().includes(value.toLowerCase())
+            );
+
+            setSatuanSuggestions(filtered);
+            setShowSatuanDropdown(filtered.length > 0);
+        };
+
+        const handleSelectSatuan = (value) => {
+            setFormData({ ...formData, satuan: value });
+            setShowSatuanDropdown(false);
+        };
+
+        // Vendor Logic
         if (isEditMode) {
             if (formData.vendor_id) data.append("vendor_id", formData.vendor_id);
         } else {
@@ -250,8 +447,14 @@ const Item = () => {
             }
         }
 
-        if (formData.fotoFile) data.append("produk_foto[]", formData.fotoFile);
-        if (formData.docSpecFile) data.append("produk_dokumen[]", formData.docSpecFile);
+        // Append Existing File Names
+        existingFotoNames.forEach(name => data.append('existing_produk_foto[]', name));
+        existingDocNames.forEach(name => data.append('existing_produk_dokumen[]', name));
+
+
+        // Append New Files (Array of Files)
+        formData.fotoFiles.forEach(file => data.append("produk_foto[]", file, file.name));
+        formData.docSpecFiles.forEach(file => data.append("produk_dokumen[]", file, file.name));
 
         try {
             if (isEditMode) {
@@ -270,7 +473,7 @@ const Item = () => {
             setShowModal(false);
         } catch (error) {
             console.error("Error save:", error.response);
-            const msg = error.response?.data?.message || "Gagal menyimpan data.";
+            const msg = error.response?.data?.message || JSON.stringify(error.response?.data?.errors) || "Gagal menyimpan data.";
             alert(msg);
         } finally {
             setLoading(false);
@@ -307,7 +510,38 @@ const Item = () => {
         e.target.value = null;
     };
 
-    // === RENDER UI ===
+
+    // --- 6. Helper Styles (CSS Inline untuk File Box) ---
+    const fileBoxStyle = {
+        border: '1px dashed #ccc', padding: '15px', borderRadius: '8px',
+        backgroundColor: '#f9f9f9', minHeight: '80px', display: 'flex',
+        flexDirection: 'column', marginTop: '5px'
+    };
+    const fileChipContainerStyle = { display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' };
+    const fileChipStyle = {
+        backgroundColor: '#e0f7fa', border: '1px solid #b2ebf2', borderRadius: '4px',
+        padding: '5px 10px', fontSize: '13px', display: 'flex', alignItems: 'center',
+        color: '#006064', fontWeight: '500',
+    };
+    const removeButtonStyle = {
+        background: 'none', border: 'none', color: '#006064', cursor: 'pointer', marginLeft: '5px',
+        fontWeight: 'bold', fontSize: '14px', lineHeight: '1', padding: 0,
+    };
+    const browseButtonStyle = {
+        backgroundColor: '#3498db', color: 'white', padding: '8px 15px', borderRadius: '5px',
+        cursor: 'pointer', display: 'inline-block', marginTop: '5px', fontSize: '14px',
+        fontWeight: 'bold', textAlign: 'center', alignSelf: 'flex-start'
+    };
+    // 🔥 Gaya untuk Pesan Error
+    const errorTextStyle = {
+        color: 'red',
+        fontSize: '12px',
+        marginTop: '5px',
+        fontWeight: 'bold' // Menambahkan bold agar lebih menonjol
+    };
+
+
+    // === 7. RENDER UI ===
     return (
         <div className="vendor-container">
             <Sidebar />
@@ -317,18 +551,112 @@ const Item = () => {
 
                 {/* Topbar */}
                 <div className="topbar-container">
-                    <div className="topbar-left">
+                    <div className="topbar-left" ref={filterRef}>
                         <div className="input-wrapper">
                             <span className="icon-search">🔍</span>
                             <input type="text" placeholder="Cari" value={search} onChange={(e) => setSearch(e.target.value)} />
                         </div>
-                        <input type="text" placeholder="Provinsi" value={filterProvinsi} onChange={(e) => setFilterProvinsi(e.target.value)} />
-                        <input type="text" placeholder="Kabupaten" value={filterKab} onChange={(e) => setFilterKab(e.target.value)} />
-                        <input type="text" placeholder="Tahun" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)} className="input-tahun" />
+                        <div style={{ position: "relative" }}>
+                            <input
+                                placeholder="Provinsi"
+                                value={filterProvinsi}
+                                onChange={(e) => setFilterProvinsi(e.target.value)}
+                                onClick={() => {
+                                    setShowProvinsiDD(prev => !prev);
+                                    setShowKabDD(false);
+                                    setShowTahunDD(false);
+                                }}
+                            />
+
+                            {showProvinsiDD && (
+                                <div className="autocomplete-dropdown">
+                                    {provinsiOptions
+                                        .filter(p => p.toLowerCase().includes(filterProvinsi.toLowerCase()))
+                                        .map((p, i) => (
+                                            <div
+                                                key={i}
+                                                className="suggestion-item"
+                                                onClick={() => {
+                                                    setFilterProvinsi(p);
+                                                    setShowProvinsiDD(false);
+                                                }}
+                                            >
+                                                {p}
+                                            </div>
+                                        ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div style={{ position: "relative" }}>
+                            <input
+                                placeholder="Kab"
+                                value={filterKab}
+                                onChange={(e) => setFilterKab(e.target.value)}
+                                onClick={() => {
+                                    setShowKabDD(prev => !prev);
+                                    setShowProvinsiDD(false);
+                                    setShowTahunDD(false);
+                                }}
+                            />
+
+                            {showKabDD && (
+                                <div className="autocomplete-dropdown">
+                                    {kabOptions
+                                        .filter(k => k.toLowerCase().includes(filterKab.toLowerCase()))
+                                        .map((k, i) => (
+                                            <div
+                                                key={i}
+                                                className="suggestion-item"
+                                                onClick={() => {
+                                                    setFilterKab(k);
+                                                    setShowKabDD(false);
+                                                }}
+                                            >
+                                                {k}
+                                            </div>
+                                        ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div style={{ position: "relative" }}>
+                            <input
+                                placeholder="Tahun"
+                                value={filterTahun}
+                                onChange={(e) => setFilterTahun(e.target.value)}
+                                onClick={() => {
+                                    setShowTahunDD(prev => !prev);
+                                    setShowProvinsiDD(false);
+                                    setShowKabDD(false);
+                                }}
+                                className="input-tahun"
+                            />
+
+                            {showTahunDD && (
+                                <div className="autocomplete-dropdown">
+                                    {tahunOptions
+                                        .filter(t => t.toString().includes(filterTahun))
+                                        .map((t, i) => (
+                                            <div
+                                                key={i}
+                                                className="suggestion-item"
+                                                onClick={() => {
+                                                    setFilterTahun(t);
+                                                    setShowTahunDD(false);
+                                                }}
+                                            >
+                                                {t}
+                                            </div>
+                                        ))}
+                                </div>
+                            )}
+                        </div>
+
                     </div>
 
                     <div className="topbar-right">
-                        <button className="btn-action btn-export" onClick={handleExport}>📥 Exspors</button>
+                        <button className="btn-action btn-export" onClick={handleExport}>📥 Export</button>
                         <div className="dropdown" style={{ position: 'relative', display: 'inline-block' }}>
                             <button className="btn-action btn-import" onClick={() => setShowDropdown(!showDropdown)}>📥 Import ▼</button>
                             {showDropdown && (
@@ -379,11 +707,30 @@ const Item = () => {
                                         <td>{item.kab}</td>
                                         <td>{item.tahun}</td>
                                         <td>
+                                            {/* Display Thumbnail (Foto pertama) */}
                                             <img
-                                                src={item.produk_foto ? `http://127.0.0.1:8000/storage/${item.produk_foto}` : "https://via.placeholder.com/100?text=No+Img"}
-                                                alt="img" className="table-img"
+                                                src={item.produk_foto ? `http://127.0.0.1:8000/storage/${getFotoList(item.produk_foto)[0]}` : "https://via.placeholder.com/100?text=No+Img"}
+                                                alt="img"
+                                                className="table-img"
                                             />
+
+                                            {/* Button lihat semua foto */}
+                                            {item.produk_foto && getFotoList(item.produk_foto).length > 0 && (
+                                                <div>
+                                                    <button
+                                                        className="link-doc"
+                                                        style={{ background: "none", border: "none", color: "#1a73e8", cursor: "pointer", fontSize: "12px", padding: 0 }}
+                                                        onClick={() => {
+                                                            setFotoList(getFotoList(item.produk_foto));
+                                                            setShowFotoModal(true);
+                                                        }}
+                                                    >
+                                                        📷 Lihat {getFotoList(item.produk_foto).length} Foto
+                                                    </button>
+                                                </div>
+                                            )}
                                         </td>
+
                                         <td className="col-desc-prod">{item.produk_deskripsi}</td>
                                         <td className="col-specs">
                                             {item.produk_dokumen ? <a href={`http://127.0.0.1:8000/storage/${item.produk_dokumen}`} target="_blank" rel="noreferrer" className="link-doc">📄 Lihat Dokumen</a> : "-"}
@@ -411,13 +758,9 @@ const Item = () => {
                         <div className="modal" style={{ position: 'relative' }}>
                             <h3>{isEditMode ? "Edit Data Item" : "Tambah Data Item"}</h3>
                             <div className="modal-body">
-                                {/* Field ID Item - Read Only untuk Add dan Edit */}
+
                                 <label>ID Item (Otomatis)</label>
-                                <input
-                                    value={formData.item_no}
-                                    disabled
-                                    style={{ backgroundColor: '#eee', fontWeight: 'bold' }}
-                                />
+                                <input value={formData.item_no} disabled style={{ backgroundColor: '#eee', fontWeight: 'bold' }} />
 
                                 <label>AHS</label>
                                 <input placeholder="Material / Jasa" value={formData.ahs} onChange={(e) => setFormData({ ...formData, ahs: e.target.value })} />
@@ -426,7 +769,33 @@ const Item = () => {
                                 <label>Merek</label>
                                 <input placeholder="Merek Produk" value={formData.merek} onChange={(e) => setFormData({ ...formData, merek: e.target.value })} />
                                 <label>Satuan</label>
-                                <input placeholder="Unit (Bh, Paket, dll)" value={formData.satuan} onChange={(e) => setFormData({ ...formData, satuan: e.target.value })} />
+                                <div style={{ position: "relative" }}>
+                                    <input
+                                        placeholder="Unit (Bh, Paket, dll)"
+                                        value={formData.satuan}
+                                        onChange={handleSatuanChange}
+                                        onFocus={() => {
+                                            if (satuanSuggestions.length > 0) {
+                                                setShowSatuanDropdown(true);
+                                            }
+                                        }}
+                                    />
+
+                                    {showSatuanDropdown && (
+                                        <div className="autocomplete-dropdown">
+                                            {satuanSuggestions.map((satuan, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    className="suggestion-item"
+                                                    onClick={() => handleSelectSatuan(satuan)}
+                                                >
+                                                    {satuan}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
                                 <label>HPP</label>
                                 <input placeholder="Harga Satuan (Rp)" value={formData.hpp} onChange={(e) => setFormData({ ...formData, hpp: e.target.value })} />
 
@@ -436,7 +805,7 @@ const Item = () => {
                                     <input
                                         placeholder="Ketik untuk mencari vendor..."
                                         value={formData.vendorName}
-                                        onChange={handleVendorChange} // Memicu Live API Search
+                                        onChange={handleVendorChange}
                                         style={{ border: vendorNotFound ? '2px solid red' : '1px solid #ccc' }}
                                     />
                                     {vendorNotFound && <p style={{ color: 'red', fontSize: '12px', margin: '0' }}>Vendor tidak ditemukan.</p>}
@@ -460,31 +829,130 @@ const Item = () => {
                                 <label>Provinsi</label>
                                 <input placeholder="Lokasi Provinsi" value={formData.provinsi} onChange={(e) => setFormData({ ...formData, provinsi: e.target.value })} />
                                 <label>Kab</label>
-                                <input placeholder="Lokasi Kabupaten" value={formData.kabupaten} onChange={(e) => setFormData({ ...formData, kabupaten: e.target.value })} />
+                                <input placeholder="Lokasi Kab" value={formData.kab} onChange={(e) => setFormData({ ...formData, kab: e.target.value })} />
                                 <label>Tahun</label>
                                 <input placeholder="Tahun Anggaran" type="number" value={formData.tahun} onChange={(e) => setFormData({ ...formData, tahun: e.target.value })} />
 
-                                <label style={{ fontWeight: 'bold', marginTop: '10px', display: 'block' }}>Upload Foto Produk</label>
-                                {isEditMode && formData.fotoUrl && <small style={{ color: 'blue' }}>Foto Existing: Ada</small>}
-                                <input type="file" className="input-file" onChange={(e) => setFormData({ ...formData, fotoFile: e.target.files[0] })} />
-
-                                <label>Deskripsi Produk</label>
+                                <label style={{ fontWeight: 'bold', marginTop: '10px', display: 'block' }}>Deskripsi Produk</label>
                                 <input placeholder="Detail Lengkap" value={formData.deskripsiProduk} onChange={(e) => setFormData({ ...formData, deskripsiProduk: e.target.value })} />
 
+
+                                {/* --- FILE BOX: Upload FOTO Produk --- */}
+                                <div>
+                                    <label style={{ fontWeight: 'bold', marginTop: '10px', display: 'block' }}>Foto Produk</label>
+                                    <p style={{ fontSize: '12px', color: '#666', margin: '0 0 5px 0' }}>Maksimal ukuran per file: {MAX_FILE_SIZE_MB}MB</p>
+                                    <div style={fileBoxStyle}>
+                                        <label htmlFor="foto-upload-modal" style={browseButtonStyle}>+ Tambah Foto</label>
+
+                                        <input
+                                            id="foto-upload-modal"
+                                            type="file"
+                                            onChange={(e) => handleFileChange(e, 'fotoFiles')}
+                                            accept="image/*"
+                                            multiple
+                                            style={{ display: 'none' }}
+                                        />
+
+                                        {/* Tampilkan File Lama (Mode Edit) */}
+                                        {existingFotoNames.length > 0 && (
+                                            <div style={{ fontSize: '12px', marginTop: '10px', color: '#555' }}>
+                                                File Lama ({existingFotoNames.length}):
+                                                <div style={fileChipContainerStyle}>
+                                                    {existingFotoNames.map((name, index) => (
+                                                        <span key={`old-f-${index}`} style={{ ...fileChipStyle, backgroundColor: '#d1e7dd', color: '#0f5132' }}>
+                                                            {name}
+                                                            <button type="button" onClick={() => handleRemoveExistingFile(name, 'foto')} style={{ ...removeButtonStyle, color: '#0f5132' }} title="Hapus file lama ini">
+                                                                <FaTimes />
+                                                            </button>
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Tampilkan File Baru dalam bentuk Chip/Tag */}
+                                        {formData.fotoFiles.length > 0 && (
+                                            <div style={fileChipContainerStyle}>
+                                                {formData.fotoFiles.map((file, index) => (
+                                                    <span key={`new-f-${index}`} style={fileChipStyle}>
+                                                        {file.name}
+                                                        <button type="button" onClick={() => handleRemoveFile(file.name, 'fotoFiles')} style={removeButtonStyle} title="Hapus file ini">
+                                                            <FaTimes />
+                                                        </button>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    {/* 🔥 Notifikasi Error Foto */}
+                                    {fotoError && <p style={errorTextStyle}>{fotoError}</p>}
+                                </div>
+                                {/* ----------------------------------- */}
+
                                 <label style={{ fontWeight: 'bold', marginTop: '10px', display: 'block' }}>Spesifikasi (Dokumen & Teks)</label>
-                                {isEditMode && formData.fileSpesifikasiName && <small style={{ color: 'blue' }}>{formData.fileSpesifikasiName}</small>}
-                                <input type="file" className="input-file" style={{ marginBottom: '5px' }} onChange={(e) => setFormData({ ...formData, docSpecFile: e.target.files[0] })} />
+
+                                {/* --- FILE BOX: Upload Dokumen Spesifikasi --- */}
+                                <div>
+                                    <p style={{ fontSize: '12px', color: '#666', margin: '0 0 5px 0' }}>Maksimal ukuran per file word atau pdf : {MAX_FILE_SIZE_MB}MB</p>
+                                    <div style={fileBoxStyle}>
+                                        <label htmlFor="dokumen-upload-modal" style={browseButtonStyle}>+ Tambah Dokumen</label>
+
+                                        <input
+                                            id="dokumen-upload-modal"
+                                            type="file"
+                                            onChange={(e) => handleFileChange(e, 'docSpecFiles')}
+                                            accept=".pdf,.doc,.docx,.xls,.xlsx"
+                                            multiple
+                                            style={{ display: 'none' }}
+                                        />
+
+                                        {/* Tampilkan Dokumen Lama (Mode Edit) */}
+                                        {existingDocNames.length > 0 && (
+                                            <div style={{ fontSize: '12px', marginTop: '10px', color: '#555' }}>
+                                                Dokumen Lama ({existingDocNames.length}):
+                                                <div style={fileChipContainerStyle}>
+                                                    {existingDocNames.map((name, index) => (
+                                                        <span key={`old-d-${index}`} style={{ ...fileChipStyle, backgroundColor: '#fff3cd', color: '#664d03' }}>
+                                                            {name}
+                                                            <button type="button" onClick={() => handleRemoveExistingFile(name, 'doc')} style={{ ...removeButtonStyle, color: '#664d03' }} title="Hapus dokumen lama ini">
+                                                                <FaTimes />
+                                                            </button>
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Tampilkan File Baru dalam bentuk Chip/Tag */}
+                                        {formData.docSpecFiles.length > 0 && (
+                                            <div style={fileChipContainerStyle}>
+                                                {formData.docSpecFiles.map((file, index) => (
+                                                    <span key={`new-d-${index}`} style={fileChipStyle}>
+                                                        {file.name}
+                                                        <button type="button" onClick={() => handleRemoveFile(file.name, 'docSpecFiles')} style={removeButtonStyle} title="Hapus dokumen ini">
+                                                            <FaTimes />
+                                                        </button>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    {/* 🔥 Notifikasi Error Dokumen */}
+                                    {docError && <p style={errorTextStyle}>{docError}</p>}
+                                </div>
+                                {/* ----------------------------------- */}
+
                                 <textarea
                                     placeholder="• Daya: 150W&#10;• Tegangan: 220V"
                                     rows="4"
-                                    style={{ width: '100%', padding: '8px' }}
+                                    style={{ width: '100%', padding: '8px', marginTop: '15px' }}
                                     value={formData.teksSpesifikasi}
                                     onChange={(e) => setFormData({ ...formData, teksSpesifikasi: e.target.value })}
                                 />
                             </div>
 
                             <div className="modal-buttons">
-                                <button className="btn-save" onClick={handleSaveModal} disabled={loading}>
+                                <button className="btn-save" onClick={handleSaveModal} disabled={loading || fotoError || docError}>
                                     {loading ? "Memproses..." : (isEditMode ? "Simpan Perubahan" : "Simpan Data")}
                                 </button>
                                 <button className="btn-cancel" onClick={() => setShowModal(false)} disabled={loading}>Batal</button>
@@ -507,16 +975,32 @@ const Item = () => {
                                 <p><strong>HPP:</strong> {new Intl.NumberFormat('id-ID').format(selectedItem.hpp)}</p>
                                 <p><strong>Vendor:</strong> {selectedItem.vendor ? getVendorName(selectedItem.vendor) : "-"}</p>
                                 <p><strong>Provinsi:</strong> {selectedItem.provinsi}</p>
-                                <p><strong>Kabupaten:</strong> {selectedItem.kab}</p>
+                                <p><strong>Kab:</strong> {selectedItem.kab}</p>
                                 <p><strong>Tahun:</strong> {selectedItem.tahun}</p>
 
                                 <div style={{ margin: '15px 0' }}>
                                     <strong>Foto Produk:</strong><br />
-                                    <img
-                                        src={selectedItem.produk_foto ? `http://127.0.0.1:8000/storage/${selectedItem.produk_foto}` : "https://via.placeholder.com/100?text=No+Img"}
-                                        alt="Foto Produk"
-                                        style={{ maxWidth: '100%', maxHeight: '200px', marginTop: '5px', borderRadius: '4px', border: '1px solid #ddd' }}
-                                    />
+                                    {getFotoList(selectedItem.produk_foto).length > 0 ? (
+                                        <>
+                                            <img
+                                                src={`http://127.0.0.1:8000/storage/${getFotoList(selectedItem.produk_foto)[0]}`}
+                                                alt="Foto Produk"
+                                                style={{ maxWidth: "100%", maxHeight: "200px", marginTop: "5px", borderRadius: "4px", border: "1px solid #ddd" }}
+                                            />
+                                            {getFotoList(selectedItem.produk_foto).length > 1 && (
+                                                <button
+                                                    className="link-doc"
+                                                    style={{ background: "none", border: "none", color: "#1a73e8", cursor: "pointer", fontSize: "12px", padding: '5px 0' }}
+                                                    onClick={() => {
+                                                        setFotoList(getFotoList(selectedItem.produk_foto));
+                                                        setShowFotoModal(true);
+                                                    }}
+                                                >
+                                                    Lihat Semua ({getFotoList(selectedItem.produk_foto).length} Foto)
+                                                </button>
+                                            )}
+                                        </>
+                                    ) : <p>-</p>}
                                 </div>
 
                                 <p><strong>Deskripsi Produk:</strong> {selectedItem.produk_deskripsi}</p>
@@ -537,6 +1021,54 @@ const Item = () => {
                         </div>
                     </div>
                 )}
+
+
+                {/* MODAL FOTO PRODUK */}
+                {showFotoModal && (
+                    <div className="modal-overlay">
+                        <div className="modal" style={{ maxWidth: "800px" }}>
+                            <h3>Foto Produk ({fotoList.length} Foto)</h3>
+
+                            <div
+                                style={{
+                                    display: "flex",
+                                    gap: "14px",
+                                    overflowX: "auto",
+                                    paddingBottom: "10px",
+                                    maxWidth: "100%",
+                                    scrollSnapType: "x mandatory"
+                                }}
+                            >
+                                {fotoList.map((foto, idx) => (
+                                    <img
+                                        key={idx}
+                                        src={`http://127.0.0.1:8000/storage/${foto}`}
+                                        alt={`foto-${idx}`}
+                                        style={{
+                                            flexShrink: 0,
+                                            width: "300px",
+                                            maxHeight: "400px",
+                                            objectFit: "contain",
+                                            borderRadius: "8px",
+                                            border: "1px solid #ddd",
+                                            scrollSnapAlign: "center"
+                                        }}
+                                    />
+                                ))}
+                            </div>
+
+                            <div className="modal-buttons">
+                                <button
+                                    className="btn-cancel"
+                                    onClick={() => setShowFotoModal(false)}
+                                >
+                                    Tutup
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
             </div>
         </div>
     );
