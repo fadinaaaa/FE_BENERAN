@@ -14,15 +14,14 @@ const VENDOR_API_URL = "http://127.0.0.1:8000/api/vendors";
 const buildFormData = (formData, data, parentKey) => {
     if (data && typeof data === 'object' && !(data instanceof Date) && !(data instanceof File)) {
         if (Array.isArray(data)) {
-            data.forEach((element, index) => {
-                if (element instanceof File) {
-                    // Untuk array file/blob, append langsung tanpa indeks: key[]
-                    formData.append(parentKey, element, element.name);
-                } else {
-                    // Untuk array objek (misal items), gunakan indeks: items[0][item_id]
-                    buildFormData(formData, element, `${parentKey}[${index}]`);
-                }
-            });
+    data.forEach((element, index) => {
+        if (element instanceof File) {
+            formData.append(`${parentKey}[]`, element);
+        } else {
+            buildFormData(formData, element, `${parentKey}[${index}]`);
+        }
+    });
+
         } else {
             Object.keys(data).forEach(key => {
                 buildFormData(formData, data[key], parentKey ? `${parentKey}[${key}]` : key);
@@ -337,18 +336,31 @@ const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
 
         const calculatedTotal = items.reduce((sum, item) => sum + (item.volume * item.hpp), 0);
         const itemsPayload = items.map(i => ({
-            item_id: i.itemId, uraian: i.uraian, satuan: i.satuan, volume: Number(i.volume), hpp: Number(i.hpp)
-        }));
+    item_no: i.displayId,     // ⬅️ WAJIB
+    volume: Number(i.volume)
+}));
+
         const finalVendorValue = selectedVendorId || formData.vendor;
 
         const ahsDataToSubmit = {
-            ...(isEditMode && { id: Number(id) }), ahs_no: formData.ahs, deskripsi: formData.deskripsi,
-            satuan: formData.satuan, hpp: calculatedTotal, provinsi: formData.provinsi, kab: formData.kab,
-            tahun: formData.tahun, merek: formData.merek, vendor: finalVendorValue,
-            produk_foto: formData.foto, produk_deskripsi: formData.deskripsiProduk,
-            produk_dokumen: formData.spesifikasiFile, spesifikasi: formData.spesifikasiTeks,
-            items: itemsPayload, _method: isEditMode ? 'PUT' : 'POST',
-        };
+    ...(isEditMode && { id: Number(id) }),
+
+    tahun: formData.tahun,
+    merek: formData.merek,
+    vendor_no: selectedVendorId,
+    deskripsi: formData.deskripsiProduk,
+    spesifikasi: formData.spesifikasiTeks,
+    satuan: formData.satuan,
+    provinsi: formData.provinsi,
+    kab: formData.kab,
+    produk_foto: formData.foto,          // FILE[]
+    produk_dokumen: formData.spesifikasiFile, // FILE[]
+
+    items: itemsPayload,
+
+    _method: isEditMode ? 'PUT' : 'POST',
+};
+
 
         const formPayload = new FormData();
         buildFormData(formPayload, ahsDataToSubmit);
