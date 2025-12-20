@@ -157,57 +157,83 @@ const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
     }, [isEditMode]);
 
     useEffect(() => {
-        if (isEditMode && allAhsData && allAhsData.length > 0) {
-            const dataToEdit = allAhsData.find((item) => String(item.id) === String(id));
+    if (!isEditMode) return;
+    if (!allAhsData || allAhsData.length === 0) return;
 
-            if (dataToEdit) {
-                let vendorName = "";
-                let vendorId = null;
-                if (dataToEdit.vendor) {
-                    if (typeof dataToEdit.vendor === 'object') {
-                        vendorName = dataToEdit.vendor.vendor_name || dataToEdit.vendor.nama || "";
-                        vendorId = dataToEdit.vendor.id || null;
-                    } else {
-                        vendorName = String(dataToEdit.vendor);
-                        vendorId = isNaN(Number(vendorName)) ? null : Number(vendorName);
-                    }
-                }
+    const dataToEdit = allAhsData.find(
+        (item) => String(item.id) === String(id)
+    );
 
-                const fotos = Array.isArray(dataToEdit.produk_foto) ? dataToEdit.produk_foto : (dataToEdit.produk_foto ? [dataToEdit.produk_foto] : []);
-                const docs = Array.isArray(dataToEdit.produk_dokumen) ? dataToEdit.produk_dokumen : (dataToEdit.produk_dokumen ? [dataToEdit.produk_dokumen] : []);
+    if (!dataToEdit) {
+        console.warn("DATA AHS UNTUK EDIT TIDAK DITEMUKAN:", id, allAhsData);
+        return;
+    }
 
-                setExistingFotoNames(fotos.map(f => f.split(/[/\\]/).pop()));
-                setExistingSpesifikasiFileNames(docs.map(d => d.split(/[/\\]/).pop()));
+    // === VENDOR ===
+    let vendorName = "";
+    let vendorId = null;
 
-                setFormData(prev => ({
-                    ...prev,
-                    ahs: dataToEdit.ahs_no || dataToEdit.ahs || `AHS-${dataToEdit.id}`,
-                    deskripsi: dataToEdit.deskripsi || "",
-                    satuan: dataToEdit.satuan || "m3",
-                    provinsi: dataToEdit.provinsi || "",
-                    kab: dataToEdit.kab || "",
-                    tahun: dataToEdit.tahun || "",
-                    merek: dataToEdit.merek || "",
-                    vendor: vendorName,
-                    foto: [],
-                    deskripsiProduk: dataToEdit.produk_deskripsi || dataToEdit.deskripsiProduk || "",
-                    spesifikasiFile: [],
-                    spesifikasiTeks: dataToEdit.spesifikasi || dataToEdit.spesifikasiTeks || "",
-                }));
-                setSelectedVendorId(vendorId);
-
-                const loadedItems = (dataToEdit.items || []).map(i => ({
-                    itemId: i.item_id || i.itemId || "UNKNOWN",
-                    displayId: i.item_no || i.displayId || i.ahs_no || i.item_id || "UNKNOWN",
-                    uraian: i.uraian || i.deskripsi || "Item Tanpa Nama",
-                    satuan: i.satuan || "-",
-                    volume: i.volume || 0,
-                    hpp: i.hpp || 0
-                }));
-                setItems(loadedItems);
-            }
+    if (dataToEdit.vendor) {
+        if (typeof dataToEdit.vendor === "object") {
+            vendorName =
+                dataToEdit.vendor.vendor_name ||
+                dataToEdit.vendor.nama ||
+                "";
+            vendorId = dataToEdit.vendor.id ?? null;
+        } else {
+            vendorName = String(dataToEdit.vendor);
+            vendorId = isNaN(Number(vendorName)) ? null : Number(vendorName);
         }
-    }, [isEditMode, id, allAhsData, allVendors]);
+    }
+
+    // === FILE LAMA ===
+    const fotos = Array.isArray(dataToEdit.produk_foto)
+        ? dataToEdit.produk_foto
+        : dataToEdit.produk_foto
+        ? [dataToEdit.produk_foto]
+        : [];
+
+    const docs = Array.isArray(dataToEdit.produk_dokumen)
+        ? dataToEdit.produk_dokumen
+        : dataToEdit.produk_dokumen
+        ? [dataToEdit.produk_dokumen]
+        : [];
+
+    setExistingFotoNames(fotos.map(f => f.split(/[/\\]/).pop()));
+    setExistingSpesifikasiFileNames(docs.map(d => d.split(/[/\\]/).pop()));
+
+    // === SET FORM ===
+    setFormData(prev => ({
+        ...prev,
+        ahs: dataToEdit.ahs_no || dataToEdit.ahs || `AHS-${dataToEdit.id}`,
+        deskripsi: dataToEdit.deskripsi ?? "",
+        satuan: dataToEdit.satuan ?? "m3",
+        provinsi: dataToEdit.provinsi ?? "",
+        kab: dataToEdit.kab ?? "",
+        tahun: dataToEdit.tahun ?? "",
+        merek: dataToEdit.merek ?? "",
+        vendor: vendorName,
+        foto: [],
+        deskripsiProduk: dataToEdit.produk_deskripsi ?? "",
+        spesifikasiFile: [],
+        spesifikasiTeks: dataToEdit.spesifikasi ?? "",
+    }));
+
+    setSelectedVendorId(vendorId);
+
+    // === ITEM PENYUSUN ===
+    const loadedItems = (dataToEdit.items || []).map(i => ({
+        itemId: i.item_id ?? i.itemId ?? "UNKNOWN",
+        displayId: i.item_no ?? i.displayId ?? i.item_id ?? "UNKNOWN",
+        uraian: i.uraian ?? i.deskripsi ?? "Item Tanpa Nama",
+        satuan: i.satuan ?? "-",
+        volume: Number(i.volume) || 0,
+        hpp: Number(i.hpp) || 0
+    }));
+
+    setItems(loadedItems);
+
+}, [isEditMode, id, allAhsData]);
 
     // --- 3. Fungsi Handler ---
 
@@ -348,7 +374,7 @@ const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
     tahun: formData.tahun,
     merek: formData.merek,
     vendor_no: selectedVendorId,
-    deskripsi: formData.deskripsiProduk,
+    deskripsi: formData.deskripsi,
     spesifikasi: formData.spesifikasiTeks,
     satuan: formData.satuan,
     provinsi: formData.provinsi,
@@ -388,6 +414,7 @@ const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
             setIsLoading(false);
         }
     };
+
 
     const handleSave = () => {
         if (!formData.deskripsi) { alert("Deskripsi pekerjaan wajib diisi!"); return; }
@@ -534,7 +561,7 @@ const AddAHS = ({ onAddSubmit, onEditSubmit, allItemList, allAhsData }) => {
 
                 {/* 1. Deskripsi Produk */}
                 <div style={inputWrapperStyle}><label style={labelStyle}>Deskripsi Produk</label>
-                    <input type="text" name="deskripsiProduk" value={formData.deskripsiProduk} onChange={handleChange} placeholder="Contoh: Semen Gresik 50kg Tipe 1" style={{ ...inputWrapperStyle }} />
+                    <input type="text" name="deskripsiProduk" value={formData.deskripsi} onChange={handleChange} placeholder="Contoh: Semen Gresik 50kg Tipe 1" style={{ ...inputWrapperStyle }} />
                 </div>
 
                 {/* --- Upload FOTO Produk (Desain Box Chip) --- */}
